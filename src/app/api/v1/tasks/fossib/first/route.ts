@@ -1,76 +1,30 @@
 import { prisma } from "@/lib/prisma";
 import serverResponse, { InvalidHeadersResponse } from "@/utils/serverResponse";
 import { NextRequest } from "next/server";
+import { z } from "zod";
+
+const SubmissionSchema = z.object({
+  file_url: z.string().trim().min(1).optional(),
+  description: z.string().trim().min(1).optional(),
+}).refine((body) => body.file_url || body.description, "File atau deskripsi wajib diisi");
 
 export async function GET(req: NextRequest) {
   const userId = req.headers.get("X-User-Id");
-  if (!userId) {
-    return InvalidHeadersResponse;
-  }
-  await prisma.$connect();
-  const firstFossibSessionSubmission = await prisma.firstFossibSessionSubmission.findFirst({
-    where: {
-      userId: +userId,
-    },
-  });
-
-  await prisma.$disconnect();
-  return serverResponse({success: true, message: "Berhasil mendapatkan data submisi Fossib pertama", data: firstFossibSessionSubmission})
-}
-
-interface firstFossibSessionSubmissionDto {
-  file_url: string,
-  description: string
+  if (!userId) return InvalidHeadersResponse;
+  const data = await prisma.firstFossibSessionSubmission.findUnique({ where: { userId: +userId } });
+  return serverResponse({ success: true, message: "Berhasil mendapatkan submisi Fossib pertama", data });
 }
 
 export async function POST(req: NextRequest) {
   const userId = req.headers.get("X-User-Id");
-  if (!userId) {
-    return InvalidHeadersResponse;
-  }
-
-  let body;
+  if (!userId) return InvalidHeadersResponse;
   try {
-    body = (await req.json()) as firstFossibSessionSubmissionDto;
-  } catch (error) {
-    return serverResponse({
-      success: false,
-      message: "Operasi gagal",
-      error: "Body tidak lengkap. Template yang dibutuhkan: { file_url: string, description: string }",
-      status: 400
-    })
-  }
-
-  if (!body.file_url || !body.description) {
-    return serverResponse({success: false, message: "Operasi gagal", error: "Body tidak lengkap", status: 400})
-  }
-  
-  await prisma.$connect();
-  const check = await prisma.firstFossibSessionSubmission.findFirst({
-    where: {
-      userId: +userId,
-    },
-  });
-
-  if (check) {
-    const firstFossibSessionSubmission = await prisma.firstFossibSessionSubmission.update({
-      where: {
-        id: check.id,
-      },
-      data: body
+    const body = SubmissionSchema.parse(await req.json());
+    const data = await prisma.firstFossibSessionSubmission.upsert({
+      where: { userId: +userId }, update: body, create: { ...body, userId: +userId },
     });
-
-    await prisma.$disconnect();
-
-    return serverResponse({ success: true, message: "Berhasil mengupdate submisi Fossib pertama", data: firstFossibSessionSubmission, status: 200 });
+    return serverResponse({ success: true, message: "Submisi Fossib pertama tersimpan", data, status: 200 });
+  } catch (error) {
+    return serverResponse({ success: false, message: "Operasi gagal", error: error instanceof z.ZodError ? error.errors : "Body tidak valid", status: 400 });
   }
-
-  const firstFossibSessionSubmission = await prisma.firstFossibSessionSubmission.create({
-    data: {
-      userId: +userId,
-      ...body,
-    },
-  });
-  await prisma.$disconnect();
-  return serverResponse({ success: true, message: "Berhasil membuat submisi Fossib pertama", data: firstFossibSessionSubmission, status: 200 });
 }

@@ -8,7 +8,6 @@ export async function GET(req: NextRequest) {
     return InvalidHeadersResponse;
   }
   const searchParams = req.nextUrl.searchParams;
-  await prisma.$connect();
   if (!searchParams.get("name")) {
     try{
       const friends = await prisma.user.findMany({
@@ -93,8 +92,11 @@ export async function GET(req: NextRequest) {
     }
   }
 
-  const name = `%${searchParams.get("name")}%`;
-  const person: { id: string }[] = await prisma.$queryRaw `SELECT id FROM users WHERE fullname LIKE ${name}`;
+  const name = searchParams.get("name")!.trim();
+  const person = await prisma.user.findMany({
+    where: { fullname: { contains: name, mode: "insensitive" } },
+    select: { id: true },
+  });
   
   if (!person?.length) {
     return serverResponse({success: true, message: "Friends Succesfully retrieved but it is empty", data: [] ,status: 200})
@@ -113,7 +115,7 @@ export async function GET(req: NextRequest) {
           },
           {
             OR: person.map(({ id }) => ({
-              id: +id,
+              id,
             })),
           },
         ],
@@ -156,8 +158,6 @@ export async function GET(req: NextRequest) {
         },
       },
     });
-    await prisma.$disconnect();
-    
     const friends_response = {
         friends: friends.map(
           ({
@@ -189,7 +189,6 @@ export async function GET(req: NextRequest) {
       };
     return serverResponse({success: true, message: `Friends Succesfully retrieved with name ${name}`, data: friends_response ,status: 200})
   } catch {
-    await prisma.$disconnect();
     return InvalidUserResponse;
   }
 }

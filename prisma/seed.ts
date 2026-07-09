@@ -1,8 +1,8 @@
-import { PrismaClient } from '@prisma/client'
-const prisma = new PrismaClient()
+import { getPrisma } from '../src/lib/prisma'
+const prisma = getPrisma()
 
 export async function main() {
-    await prisma.$connect;
+    await prisma.$connect();
     await prisma.question.createMany({
         data: [
             {

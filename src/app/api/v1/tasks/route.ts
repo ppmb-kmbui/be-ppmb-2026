@@ -1,130 +1,84 @@
-import { CLUSTERS } from "@/lib/const";
+import { CLUSTERS, NETWORKING_BATCHES, SENIOR_BATCHES } from "@/lib/const";
 import { prisma } from "@/lib/prisma";
 import serverResponse, { InvalidHeadersResponse } from "@/utils/serverResponse";
 import { NextRequest } from "next/server";
 
+const percentage = (completed: number, required: number) =>
+  required === 0 ? 0 : Math.min(100, Math.round((completed / required) * 100));
+
 export async function GET(req: NextRequest) {
-  const userId = req.headers.get("X-User-Id");
+  const userIdHeader = req.headers.get("X-User-Id");
+  if (!userIdHeader) return InvalidHeadersResponse;
+  const userId = +userIdHeader;
 
-  if (!userId) {
-    return InvalidHeadersResponse;
-  }
+  const [networkingAngkatan, networkingKating, fossib1, fossib2, insightHunting, mentoringVlog, mentoringReflection, explorer] = await Promise.all([
+    prisma.networkingTask.findMany({
+      where: { is_done: true, fromId: userId },
+      select: { to: { select: { faculty: true, batch: true } } },
+    }),
+    prisma.networkingKatingTask.findMany({
+      where: { fromId: userId },
+      select: { to: { select: { batch: true } } },
+    }),
+    prisma.firstFossibSessionSubmission.findUnique({ where: { userId } }),
+    prisma.secondFossibSessionSubmission.findUnique({ where: { userId } }),
+    prisma.insightHuntingSubmission.findUnique({ where: { userId } }),
+    prisma.mentoringVlogSubmission.findUnique({ where: { userId } }),
+    prisma.mentoringReflection.findUnique({ where: { userId } }),
+    prisma.explorerSubmission.findUnique({ where: { userId } }),
+  ]);
 
-  await prisma.$connect();
-
-  const networkingAngkatan = await prisma.networkingTask.findMany({
-    where: {
-      is_done: true,
-      fromId: +userId,
-    },
-    select: {
-      to: {
-        select: {
-          faculty: true,
-        },
-      },
-    },
-  });
-
-  const progressMap = {
+  const facultyProgress = {
     SAINTEK: { progress: 0, min: 3 },
     SOSHUM: { progress: 0, min: 3 },
     RIK_VOK: { progress: 0, min: 3 },
-    OTHER: { progress: 0, min: 3 },
+    OTHER: { progress: 0, min: 1 },
   };
+  const progressByBatch: Record<string, { progress: number; min: number }> = Object.fromEntries(
+    NETWORKING_BATCHES.map((batch) => [String(batch), { progress: 0, min: batch === NETWORKING_BATCHES[0] ? 10 : 0 }]),
+  );
 
-  for (const angkatan of networkingAngkatan) {
-    const faculty = angkatan.to.faculty;
-
-    if (CLUSTERS["SAINTEK"].includes(faculty!.toUpperCase())) {
-      progressMap.SAINTEK = {
-        progress: progressMap.SAINTEK.progress + 1,
-        min: 3,
-      };
-    }
-
-    if (CLUSTERS["SOSHUM"].includes(faculty!.toUpperCase())) {
-      progressMap.SOSHUM = {
-        progress: progressMap.SOSHUM.progress + 1,
-        min: 3,
-      };
-    }
-
-    if (CLUSTERS["RIK_VOK"].includes(faculty!.toUpperCase())) {
-      progressMap.RIK_VOK = {
-        progress: progressMap.RIK_VOK.progress + 1,
-        min: 3,
-      };
-    }
+  for (const task of networkingAngkatan) {
+    const faculty = task.to.faculty?.toUpperCase();
+    if (faculty && CLUSTERS.SAINTEK.includes(faculty)) facultyProgress.SAINTEK.progress++;
+    else if (faculty && CLUSTERS.SOSHUM.includes(faculty)) facultyProgress.SOSHUM.progress++;
+    else if (faculty && CLUSTERS.RIK_VOK.includes(faculty)) facultyProgress.RIK_VOK.progress++;
+    else facultyProgress.OTHER.progress++;
+    const batch = String(task.to.batch);
+    if (progressByBatch[batch]) progressByBatch[batch].progress++;
   }
 
-  const networkingKating = await prisma.networkingKatingTask.findMany({
-    where: {
-      fromId: +userId,
-    },
-    select: {
-      to: {
-        select: {
-          batch: true,
-        },
-      },
-    },
-  });
-
-  const progressKatingMap = {
-    "2024": { progress: 0, min: 4 },
-    "2023": { progress: 0, min: 3 },
-    "2022": { progress: 0, min: 3 },
-  };
-
-  for (const kating of networkingKating) {
-    if (kating.to.batch === 2024) {
-      progressKatingMap["2024"].progress++;
-    }
-    if (kating.to.batch === 2023) {
-      progressKatingMap["2023"].progress++;
-    }
-    if (kating.to.batch === 2022) {
-      progressKatingMap["2022"].progress++;
-    }
+  const seniorProgress: Record<string, { progress: number; min: number }> = Object.fromEntries(
+    SENIOR_BATCHES.map((batch, index) => [String(batch), { progress: 0, min: index === 0 ? 4 : 3 }]),
+  );
+  for (const task of networkingKating) {
+    const batch = String(task.to.batch);
+    if (seniorProgress[batch]) seniorProgress[batch].progress++;
   }
 
-  const fossib1 = await prisma.firstFossibSessionSubmission.findFirst({
-    where: {
-      userId: +userId,
-    },
-  });
-
-  const insightHunting = await prisma.insightHuntingSubmission.findFirst({
-    where: {
-      userId: +userId,
-    },
-  });
-
-  const mentoringVlog = await prisma.mentoringVlogSubmission.findFirst({
-    where: {
-      userId: +userId,
-    },
-  });
-
-  const exp = await prisma.explorerSubmission.findFirst({
-    where: {
-      userId: +userId,
-    },
-  });
-
-  await prisma.$disconnect();
+  const networkingCompleted = networkingAngkatan.length + networkingKating.length;
+  const mentoringCompleted = Number(!!mentoringVlog) + Number(!!mentoringReflection);
+  const fossibCompleted = Number(!!fossib1) + Number(!!fossib2) + Number(!!insightHunting);
 
   return serverResponse({
     success: true,
     message: "Berhasil mendapatkan tasks user",
     data: {
-      networkingAngkatan: { progress: progressMap, min: 10 },
-      networkingKating: { progress: progressKatingMap, min: 10 },
-      kmbuiExplorerDone: !!exp,
+      networkingAngkatan: { progress: facultyProgress, byBatch: progressByBatch, min: 10 },
+      networkingKating: { progress: seniorProgress, min: 10 },
+      kmbuiExplorerDone: !!explorer,
       firstFossibDone: !!fossib1,
+      secondFossibDone: !!fossib2,
       insightHuntingDone: !!insightHunting,
       mentoringVlogDone: !!mentoringVlog,
+      mentoringReflectionDone: !!mentoringReflection,
+      cards: {
+        networking: { completed: networkingCompleted, required: 20, percentage: percentage(networkingCompleted, 20) },
+        explorer: { completed: Number(!!explorer), required: 1, percentage: percentage(Number(!!explorer), 1) },
+        mentoring: { completed: mentoringCompleted, required: 2, percentage: percentage(mentoringCompleted, 2) },
+        fosterSiblings: { completed: fossibCompleted, required: 3, percentage: percentage(fossibCompleted, 3) },
+      },
     },
+    status: 200,
   });
 }

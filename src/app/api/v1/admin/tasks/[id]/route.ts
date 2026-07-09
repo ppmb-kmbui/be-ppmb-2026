@@ -1,147 +1,78 @@
+import { CLUSTERS, SENIOR_BATCHES } from "@/lib/const";
 import { prisma } from "@/lib/prisma";
-import { CLUSTERS } from "@/lib/const";
 import serverResponse from "@/utils/serverResponse";
 import { NextRequest } from "next/server";
+
 export const maxDuration = 60;
+
 export async function GET(req: NextRequest, props: { params: Promise<{ id: string }> }) {
-  const params = await props.params;
-  const isAdmin = !!req.headers.get("X-User-Admin");
-  if (!isAdmin) {
-    return new Response("Forbidden", { status: 403 });
+  if (req.headers.get("X-User-Admin") !== "true") {
+    return serverResponse({ success: false, message: "Forbidden", error: "Akses admin dibutuhkan", status: 403 });
   }
-  if (!params.id) {
-    return new Response("Bad Request", { status: 400 });
+  const { id } = await props.params;
+  const userId = Number(id);
+  if (!Number.isInteger(userId) || userId <= 0) {
+    return serverResponse({ success: false, message: "Bad Request", error: "User ID tidak valid", status: 400 });
   }
-  const userId = +params.id;
-  await prisma.$connect();
-  
-  const networkingAngkatan = await prisma.networkingTask.findMany({
-    where: {
-      is_done: true,
-      fromId: +userId,
-    },
-    select: {
-      to: {
-        select: {
-          faculty: true,
-        },
+
+  const [user, networkingAngkatan, networkingKating, fossib1, fossib2, insightHunting, mentoringReflection, mentoringVlog, explorer] = await Promise.all([
+    prisma.user.findUnique({
+      where: { id: userId },
+      select: { id: true, fullname: true, email: true, imgUrl: true, faculty: true, batch: true, lineId: true, whatsappNumber: true },
+    }),
+    prisma.networkingTask.findMany({
+      where: { fromId: userId },
+      include: {
+        to: { select: { id: true, fullname: true, batch: true, faculty: true, imgUrl: true } },
+        questions: { include: { question: true } },
       },
-    },
-  });
+    }),
+    prisma.networkingKatingTask.findMany({
+      where: { fromId: userId },
+      include: { to: true, questions: { include: { question: true } } },
+    }),
+    prisma.firstFossibSessionSubmission.findUnique({ where: { userId } }),
+    prisma.secondFossibSessionSubmission.findUnique({ where: { userId } }),
+    prisma.insightHuntingSubmission.findUnique({ where: { userId } }),
+    prisma.mentoringReflection.findUnique({ where: { userId } }),
+    prisma.mentoringVlogSubmission.findUnique({ where: { userId } }),
+    prisma.explorerSubmission.findUnique({ where: { userId } }),
+  ]);
 
-  const progressMap = {
-    SAINTEK: { progress: 0, min: 3 },
-    SOSHUM: { progress: 0, min: 3 },
-    RIK_VOK: { progress: 0, min: 3 },
-    OTHER: { progress: 0, min: 3 },
-  };
-
-  for (const angkatan of networkingAngkatan) {
-    const faculty = angkatan.to.faculty;
-
-    if (CLUSTERS["SAINTEK"].includes(faculty!.toUpperCase())) {
-      progressMap.SAINTEK = {
-        progress: progressMap.SAINTEK.progress + 1,
-        min: 3,
-      };
-    }
-
-    if (CLUSTERS["SOSHUM"].includes(faculty!.toUpperCase())) {
-      progressMap.SOSHUM = {
-        progress: progressMap.SOSHUM.progress + 1,
-        min: 3,
-      };
-    }
-
-    if (CLUSTERS["RIK_VOK"].includes(faculty!.toUpperCase())) {
-      progressMap.RIK_VOK = {
-        progress: progressMap.RIK_VOK.progress + 1,
-        min: 3,
-      };
-    }
-
+  if (!user) {
+    return serverResponse({ success: false, message: "User tidak ditemukan", error: "USER_NOT_FOUND", status: 404 });
   }
 
-  const networkingKating = await prisma.networkingKatingTask.findMany({
-    where: {
-      fromId: +userId,
-    },
-    select: {
-      to: {
-        select: {
-          batch: true,
-        },
-      },
-    },
-  });
-
-  const progressKatingMap = {
-    "2024": { progress: 0, min: 6 },
-    "2023": { progress: 0, min: 3 },
-    "2022": { progress: 0, min: 1 },
-  };
-  for (const kating of networkingKating) {
-    if (kating.to.batch === 2024) {
-      progressKatingMap["2024"].progress++;
-    }
-    if (kating.to.batch === 2023) {
-      progressKatingMap["2023"].progress++;
-    }
-    if (kating.to.batch === 2022) {
-      progressKatingMap["2022"].progress++;
-    }
+  const facultyProgress = { SAINTEK: 0, SOSHUM: 0, RIK_VOK: 0, OTHER: 0 };
+  for (const task of networkingAngkatan.filter((item) => item.is_done)) {
+    const faculty = task.to.faculty?.toUpperCase();
+    if (faculty && CLUSTERS.SAINTEK.includes(faculty)) facultyProgress.SAINTEK++;
+    else if (faculty && CLUSTERS.SOSHUM.includes(faculty)) facultyProgress.SOSHUM++;
+    else if (faculty && CLUSTERS.RIK_VOK.includes(faculty)) facultyProgress.RIK_VOK++;
+    else facultyProgress.OTHER++;
   }
-
-  const fossib1 = await prisma.firstFossibSessionSubmission.findFirst({
-    where: {
-      userId: +userId,
-    },
-  });
-
-  const fossib2 = await prisma.secondFossibSessionSubmission.findFirst({
-    where: {
-      userId: +userId,
-    },
-  });
-
-  const insightHunting = await prisma.insightHuntingSubmission.findFirst({
-    where: {
-      userId: +userId,
-    },
-  });
-
-  const mentoringReflection = await prisma.mentoringReflection.findFirst({
-    where: {
-      userId: +userId,
-    },
-  });
-
-  const mentoringVlog = await prisma.mentoringVlogSubmission.findFirst({
-    where: {
-      userId: +userId,
-    },
-  });
-
-  const exp = await prisma.explorerSubmission.findFirst({
-    where: {
-      userId: +userId,
-    },
-  });
-
-  await prisma.$disconnect();
+  const seniorProgress = Object.fromEntries(SENIOR_BATCHES.map((batch) => [batch, networkingKating.filter((item) => item.to.batch === batch).length]));
+  const status = {
+    networking: networkingAngkatan.some((item) => item.is_done) || networkingKating.length > 0,
+    explorer: !!explorer,
+    mentoring: !!mentoringReflection || !!mentoringVlog,
+    fosterSiblings: !!fossib1 || !!fossib2 || !!insightHunting,
+  };
 
   return serverResponse({
     success: true,
-    message: "Berhasil mendapatkan tasks user",
+    message: "Detail tugas user berhasil didapatkan",
     data: {
-      networkingAngkatan: { progress: progressMap, min: 20 },
-      networkingKating: { progress: progressKatingMap, min: 10 },
-      kmbuiExplorerDone: !!exp,
-      firstFossibDone: !!fossib1,
-      secondFossibDone: !!fossib2,
-      insightHuntingDone: !!insightHunting,
-      mentoringReflectionDone: !!mentoringReflection,
-      mentoringVlogDone: !!mentoringVlog,
-    }
+      user,
+      status,
+      progress: { faculty: facultyProgress, senior: seniorProgress },
+      submissions: {
+        networking: { peers: networkingAngkatan, seniors: networkingKating },
+        explorer,
+        mentoring: { vlog: mentoringVlog, reflection: mentoringReflection },
+        fosterSiblings: { first: fossib1, second: fossib2, insightHunting },
+      },
+    },
+    status: 200,
   });
 }

@@ -1,0 +1,56 @@
+import { prisma } from "@/lib/prisma";
+import serverResponse from "@/utils/serverResponse";
+import { NextRequest } from "next/server";
+
+export async function GET(req: NextRequest) {
+  if (req.headers.get("X-User-Admin") !== "true") {
+    return serverResponse({ success: false, message: "Forbidden", error: "Akses admin dibutuhkan", status: 403 });
+  }
+  const page = Math.max(1, Number(req.nextUrl.searchParams.get("page")) || 1);
+  const limit = Math.min(50, Math.max(1, Number(req.nextUrl.searchParams.get("limit")) || 20));
+  const search = req.nextUrl.searchParams.get("search")?.trim();
+  const where = {
+    isAdmin: false,
+    ...(search ? { fullname: { contains: search, mode: "insensitive" as const } } : {}),
+  };
+
+  const [total, users] = await Promise.all([
+    prisma.user.count({ where }),
+    prisma.user.findMany({
+      where,
+      skip: (page - 1) * limit,
+      take: limit,
+      orderBy: { fullname: "asc" },
+      select: {
+        id: true, fullname: true, email: true, imgUrl: true, faculty: true, batch: true,
+        _count: {
+          select: {
+            NetworkingTaskSender: { where: { is_done: true } },
+            NetworkingKatingTaskSender: true,
+            ExplorerSubmission: true,
+            MentoringVlogSubmission: true,
+            MentoringReflection: true,
+            FirstFossibSessionSubmission: true,
+            SecondFossibSessionSubmission: true,
+            InsightHuntingSubmission: true,
+          },
+        },
+      },
+    }),
+  ]);
+
+  const data = users.map(({ _count, ...user }) => {
+    const completed = Math.min(20, _count.NetworkingTaskSender + _count.NetworkingKatingTaskSender) +
+      Math.min(1, _count.ExplorerSubmission) +
+      Math.min(2, _count.MentoringVlogSubmission + _count.MentoringReflection) +
+      Math.min(3, _count.FirstFossibSessionSubmission + _count.SecondFossibSessionSubmission + _count.InsightHuntingSubmission);
+    return { ...user, progress: { completed, required: 26, percentage: Math.round((completed / 26) * 100) } };
+  });
+
+  return serverResponse({
+    success: true,
+    message: "Daftar peserta berhasil didapatkan",
+    data: { users: data, pagination: { page, limit, total, totalPages: Math.ceil(total / limit) } },
+    status: 200,
+  });
+}

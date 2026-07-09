@@ -1,102 +1,41 @@
 import { prisma } from "@/lib/prisma";
 import serverResponse, { InvalidHeadersResponse } from "@/utils/serverResponse";
 import { NextRequest } from "next/server";
+import { z } from "zod";
+
+const VlogSchema = z.object({
+  file_url: z.string().trim().min(1, "URL video wajib diisi"),
+  description: z.string().trim().min(1).optional(),
+});
+
+const ReflectionSchema = z.object({
+  file_url: z.string().trim().min(1).optional(),
+  description: z.string().trim().min(1).optional(),
+}).refine((body) => body.file_url || body.description, "PDF atau deskripsi wajib diisi");
 
 export async function POST(req: NextRequest, props: { params: Promise<{ id: string }> }) {
-  const params = await props.params;
+  const { id } = await props.params;
   const userId = req.headers.get("X-User-Id");
-  if (!userId || !params.id) {
-    return InvalidHeadersResponse;
+  if (!userId) return InvalidHeadersResponse;
+
+  try {
+    const raw = await req.json();
+    if (id === "vlog") {
+      const body = VlogSchema.parse(raw);
+      const data = await prisma.mentoringVlogSubmission.upsert({
+        where: { userId: +userId }, update: body, create: { ...body, userId: +userId },
+      });
+      return serverResponse({ success: true, message: "Vlog mentoring tersimpan", data, status: 200 });
+    }
+    if (id === "reflection") {
+      const body = ReflectionSchema.parse(raw);
+      const data = await prisma.mentoringReflection.upsert({
+        where: { userId: +userId }, update: body, create: { ...body, userId: +userId },
+      });
+      return serverResponse({ success: true, message: "Refleksi mentoring tersimpan", data, status: 200 });
+    }
+    return serverResponse({ success: false, message: "Operasi gagal", error: "Jenis mentoring tidak ditemukan", status: 404 });
+  } catch (error) {
+    return serverResponse({ success: false, message: "Operasi gagal", error: error instanceof z.ZodError ? error.errors : "Body tidak valid", status: 400 });
   }
-
-  let body = await req.json();
-  await prisma.$connect();
-  if (params.id === "vlog") {
-    try {
-      body = body as {file_url: string};
-    } catch {
-      return serverResponse({
-        success: false,
-        message: "Operasi gagal",
-        error: "Body tidak valid atau kosong",
-        status: 400
-      });
-    }
-    const exist = await prisma.mentoringVlogSubmission.findFirst({
-      where: { userId: +userId },
-    });
-    if (exist) {
-      const mentoringVlogSubmission = await prisma.mentoringVlogSubmission.updateMany({
-        where: { id: exist.id },
-        data: {
-          ...body,
-        },
-      });
-      await prisma.$disconnect();
-      return serverResponse({success: true, message: "Berhasil submit vlog kamu", data: mentoringVlogSubmission, status: 200});
-    }
-    const mentoringVlogSubmission = await prisma.mentoringVlogSubmission.create({
-      data: {
-        ...body,
-        userId: +userId,
-      },
-    });
-    await prisma.$disconnect();
-    return serverResponse({
-      success: true,
-      message: "Berhasil submit refleksi kamu",
-      data: mentoringVlogSubmission,
-      status: 200
-    });
-  }
-
-  if (params.id === "reflection") {
-    try {
-      body = body as {file_url: string, description: string};
-    } catch {
-      return serverResponse({
-        success: false,
-        message: "Operasi gagal",
-        error: "Body tidak valid atau kosong",
-        status: 400
-      });
-    }
-
-    const exist = await prisma.mentoringReflection.findFirst({
-      where: { userId: +userId },
-    });
-
-    if (exist) {
-      const mentoringReflectionSubmission = await prisma.mentoringReflection.update({
-        where: { id: exist.id },
-        data: {
-          ...body,
-        },
-      });
-      await prisma.$disconnect();
-
-      return serverResponse({
-        success: true,
-        message: "Berhasil submit refleksi kamu",
-        data: mentoringReflectionSubmission,
-        status: 200
-      });
-    }
-
-    const mentoringReflectionSubmission = await prisma.mentoringReflection.create({
-      data: {
-        ...body,
-        userId: +userId,
-      },
-    });
-    await prisma.$disconnect();
-    return serverResponse({
-      success: true,
-      message: "Berhasil submit refleksi kamu",
-      data: mentoringReflectionSubmission,
-      status: 200
-    });
-  }
-
-  return new Response("Page does not exists.", { status: 404 });
 }

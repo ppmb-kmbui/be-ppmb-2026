@@ -10,9 +10,6 @@ export async function POST(req: NextRequest, props: { params: Promise<{ id: stri
   if (!userId || !targetId) {
     return InvalidHeadersResponse;
   }
-
-  await prisma.$connect();
-
   const sent = await prisma.connectionRequest.findFirst({
     where: {
       fromId: +userId,
@@ -21,7 +18,6 @@ export async function POST(req: NextRequest, props: { params: Promise<{ id: stri
   });
 
   if (sent) {
-    await prisma.$disconnect();
     return serverResponse({success: false, message: "Invalid Connection Attempt", error: "Connection request sudah dibuat", status: 409});
   }
 
@@ -33,7 +29,6 @@ export async function POST(req: NextRequest, props: { params: Promise<{ id: stri
   });
 
   if (recieved) {
-    await prisma.$disconnect();
     return serverResponse({success: false, message: "Invalid Connection Attempt", error: "User sudah mengirim connection request kepada Anda", status: 409});
   }
   
@@ -44,8 +39,6 @@ export async function POST(req: NextRequest, props: { params: Promise<{ id: stri
       status: "pending",
     },
   });
-  await prisma.$disconnect();
-
   return serverResponse({
     success: true,
     message: "Connection Request berhasil dibuat",
@@ -62,9 +55,6 @@ export async function PUT(req: NextRequest, props: { params: Promise<{ id: strin
   if (!userId || !targetId) {
     return InvalidHeadersResponse;
   }
-
-  await prisma.$connect();
-
   const connectionRequest = await prisma.connectionRequest.findFirst({
     where: {
       fromId: +targetId,
@@ -111,7 +101,6 @@ export async function PUT(req: NextRequest, props: { params: Promise<{ id: strin
     }),
   ]);
   const [connection1, connection2, _] = transaction;
-  await prisma.$disconnect();
   return serverResponse({success: true, message: "Connection succesful created", data: {connection1: connection1, connection2: connection2}, status: 200});
 }
 
@@ -123,14 +112,11 @@ export async function DELETE(req: NextRequest, props: { params: Promise<{ id: st
   if (!userId || !targetId) {
     return InvalidHeadersResponse;
   }
-
-  await prisma.$connect();
   const targetUser = await prisma.user.findUnique({
     where: { id: +targetId },
   });
 
   if (!targetUser) {
-    await prisma.$disconnect();
     return InvalidTargetUserResponse;
   }
 
@@ -148,7 +134,6 @@ export async function DELETE(req: NextRequest, props: { params: Promise<{ id: st
       }
     });
   } catch (error) {
-    await prisma.$disconnect();
     let errorMsg = "Unknown error";
     if (error instanceof Error) {
       errorMsg = error.message;
@@ -160,8 +145,6 @@ export async function DELETE(req: NextRequest, props: { params: Promise<{ id: st
       status: 500
     });
   }
-
-  await prisma.$disconnect();
   return serverResponse({success: true, message: `Deleted Connection Request to ${targetUser.fullname}`, data: connr, status: 200});
 }
 

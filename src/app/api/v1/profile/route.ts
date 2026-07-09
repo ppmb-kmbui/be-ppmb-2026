@@ -1,13 +1,21 @@
 import { prisma } from "@/lib/prisma";
 import { NextRequest } from "next/server";
 import serverResponse, { InvalidHeadersResponse, InvalidUserResponse } from "@/utils/serverResponse";
+import { z } from "zod";
+
+const UpdateProfileSchema = z.object({
+  imgUrl: z.string().trim().min(1).optional(),
+  fullname: z.string().trim().min(3).optional(),
+  lineId: z.string().trim().min(2).optional(),
+  whatsappNumber: z.string().trim().regex(/^(?:\+62|62|0)8\d{7,12}$/).optional(),
+  faculty: z.string().trim().min(2).optional(),
+}).refine((value) => Object.keys(value).length > 0, "Minimal satu field harus diisi");
 
 export async function GET(req: NextRequest) {
   const userId = req.headers.get("X-User-Id");
   if (!userId) {
     return InvalidHeadersResponse;
   }
-  await prisma.$connect();
   const user = await prisma.user.findUnique({
     where: {
       id: +userId,
@@ -41,8 +49,6 @@ export async function GET(req: NextRequest) {
       password: true,
     },
   });
-  await prisma.$disconnect();
-
   if (!user) {
     return InvalidUserResponse;
   }
@@ -66,29 +72,26 @@ export async function PUT(req: NextRequest) {
   if (!userId) {
     return InvalidHeadersResponse;
   }
-  const body = await req.json();
-  if (!body.imgUrl) {
+  let body: z.infer<typeof UpdateProfileSchema>;
+  try {
+    body = UpdateProfileSchema.parse(await req.json());
+  } catch (error) {
     return serverResponse({
       success: false,
       message: "Gagal memperbarui profil",
-      error: "imgUrl wajib diisi",
+      error: error instanceof z.ZodError ? error.errors : "Body tidak valid",
       status: 400,
     });
   }
-  await prisma.$connect();
   const user = await prisma.user.update({
     where: {
       id: +userId,
     },
-    data: {
-      imgUrl: body.imgUrl,
-    },
+    data: body,
     omit: {
       password: true,
     },
   });
-  await prisma.$disconnect();
-
   return serverResponse({
     success: true,
     message: "Berhasil memperbarui profil",

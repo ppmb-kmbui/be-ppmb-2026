@@ -7,7 +7,6 @@ export async function GET(req: NextRequest) {
   if (!userId) {
     return InvalidHeadersResponse;
   }
-  await prisma.$connect();
   const conns = await prisma.networkingKatingTask.findMany({
     where: {
       fromId: +userId,
@@ -16,7 +15,7 @@ export async function GET(req: NextRequest) {
       to: true,
       from: {
         omit: {
-          password: false,
+          password: true,
         },
       },
       questions: {
@@ -26,7 +25,6 @@ export async function GET(req: NextRequest) {
       },
     },
   });
-  await prisma.$disconnect();
   return serverResponse({
     success: true,
     message: "Berhasil mengambil data networking kating",

@@ -10,9 +10,9 @@ export default function serverResponse <T> (
     ServerResponseType<T>): NextResponse<ServerResponseType<T>> {
         const response: ServerResponseType<T> = {success, status};
 
-        if (message) response.message = message
-        if (error) response.error = error
-        if (data) response.data = data
+        if (message !== undefined) response.message = message
+        if (error !== undefined) response.error = error
+        if (data !== undefined) response.data = data
 
         return NextResponse.json(response, {status: response.status});
 }

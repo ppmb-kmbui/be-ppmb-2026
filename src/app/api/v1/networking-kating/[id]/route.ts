@@ -1,12 +1,11 @@
 import { prisma } from "@/lib/prisma";
 import serverResponse, { InvalidHeadersResponse } from "@/utils/serverResponse";
 import { NextRequest } from "next/server";
+import { CURRENT_BATCH } from "@/lib/const";
 
 export async function GET(req: NextRequest, { params }: {params: Promise<{id: string}>}) {
     const userId = req.headers.get('X-User-Id');
     const targetId = (await params).id;
-    await prisma.$connect();
-
     const response = await checkUser(userId, targetId);
     if (response !== null) return response;
 
@@ -27,7 +26,6 @@ export async function GET(req: NextRequest, { params }: {params: Promise<{id: st
     });
     
     if (!networkingKating) {
-        await prisma.$disconnect();
         return serverResponse({success: false, message: "Operasi gagal", error: "Anda belum networking dari kating ini", status: 400});
     }
 
@@ -36,10 +34,15 @@ export async function GET(req: NextRequest, { params }: {params: Promise<{id: st
 
 interface SubmitAnswerNetworkingKatingTaskDto {
     img_url: string,
-    answers: {
+    description?: string,
+    answers?: {
         answer: string
     } [],
-    optionalAnswes: {
+    optionalAnswes?: {
+        question: string,
+        answer: string
+    },
+    optionalAnswers?: {
         question: string,
         answer: string
     }
@@ -63,11 +66,16 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
 
     const template = {
         img_url: "string",
+        description: "string (opsional, sebagai pengganti answers)",
         answers: [{ answer: "string" }],
-        optionalAnswes: { question: "string", answer: "string" }
+        optionalAnswers: { question: "string", answer: "string" }
     };
 
-    if (!body.img_url || !body.answers || !body.optionalAnswes) {
+    const optionalAnswer = body.optionalAnswers ?? body.optionalAnswes;
+    const hasLegacyAnswers = body.answers?.length === 7 && !!optionalAnswer;
+    const hasSimpleDescription = !!body.description?.trim();
+
+    if (!body.img_url || (!hasLegacyAnswers && !hasSimpleDescription)) {
         return serverResponse({
             success: false,
             message: "Operasi gagal",
@@ -78,7 +86,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
         });
     }
 
-    if (body.answers.length !== 7) {
+    if (body.answers && body.answers.length !== 7) {
         return serverResponse({
             success: false,
             message: "Operasi gagal",
@@ -87,24 +95,33 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
             status: 400
         });
     }
-
-    await prisma.$connect();
-
     const userCheck = await checkUser(userId, targetId);
     if (userCheck !== null) {
-        await prisma.$disconnect();
         return userCheck;
     }
 
     const senior = await prisma.seniorUser.findFirst({ where: { id: +targetId } });
     if (!senior) {
-        await prisma.$disconnect();
         return serverResponse({
             success: false,
             message: "Operasi gagal",
             error: "Kating tidak ditemukan",
             status: 400
         });
+    }
+
+    if (hasSimpleDescription && !hasLegacyAnswers) {
+        const networkingKatingAnswer = await prisma.networkingKatingTask.upsert({
+            where: { fromId_toId: { fromId: +userId!, toId: +targetId } },
+            update: { img_url: body.img_url, description: body.description!.trim() },
+            create: { fromId: +userId!, toId: +targetId, img_url: body.img_url, description: body.description!.trim() },
+            include: {
+                to: true,
+                from: { omit: { password: true } },
+                questions: { include: { question: true } },
+            },
+        });
+        return serverResponse({ success: true, message: "Berhasil submit networking", data: networkingKatingAnswer, status: 200 });
     }
     
     await prisma.networkingKatingTask.upsert({
@@ -123,7 +140,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
 
     const newQuestion = await prisma.questionKating.create({
         data: {
-            question: body.optionalAnswes.question,
+            question: optionalAnswer!.question,
             group_id: -1
         }
     });
@@ -134,10 +151,10 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
                 fromId: +userId!,
                 toId: +targetId,
                 questionId: newQuestion.id,
-                answer: body.optionalAnswes.answer
+                answer: optionalAnswer!.answer
             }
         }),
-        ...body.answers.map((answerObj, idx) =>
+        ...body.answers!.map((answerObj, idx) =>
             prisma.questionKatingTask.create({
                 data: {
                     questionId: idx + 1,
@@ -158,16 +175,13 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
                 toId: +targetId
             }
         },
-        data: { img_url: body.img_url },
+        data: { img_url: body.img_url, description: body.description?.trim() },
         include: {
             to: true,
             from: { omit: { password: true } },
             questions: { include: { question: true } }
         }
     });
-
-    await prisma.$disconnect();
-
     return serverResponse({
         success: true,
         message: "Berhasil submit networking",
@@ -188,13 +202,11 @@ async function checkUser(userId: string | null, targetId: string | null) {
     });
 
     if (!user) {
-        await prisma.$disconnect();
         return serverResponse({success: false, message: "Operasi gagal", error: "User tidak ditemukan", status: 404});
     }
 
-    if (user.batch !== 2025) {
-        await prisma.$disconnect();
-        return serverResponse({success: false, message: "Operasi gagal", error: "Khusus mahasiswa baru saja", status: 400});
+    if (user.batch !== CURRENT_BATCH) {
+        return serverResponse({success: false, message: "Operasi gagal", error: `Khusus mahasiswa baru batch ${CURRENT_BATCH}`, status: 400});
     }
 
     return null;

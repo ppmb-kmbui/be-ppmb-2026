@@ -1,39 +1,45 @@
 import { NextRequest } from "next/server";
 import { hash } from "bcrypt";
 import { prisma } from "@/lib/prisma";
-import { Prisma } from "@prisma/client";
+import { Prisma } from "@/generated/prisma/client";
 import { z, ZodError} from "zod";
 import serverResponse from "@/utils/serverResponse";
 import { ValidationError } from "@/types/api-type";
 
 const UserSchema = z.object({
-  fullname: z.string().min(3, "Nama lengkap minimal 3 karakter"),
-  email: z.string().email("Tolong masukan email yang sesuai"),
+  fullname: z.string().trim().min(3, "Nama lengkap minimal 3 karakter"),
+  lineId: z.string().trim().min(2, "ID Line wajib diisi"),
+  whatsappNumber: z.string().trim().regex(/^(?:\+62|62|0)8\d{7,12}$/, "Nomor WhatsApp tidak valid"),
+  email: z.string().trim().email("Tolong masukan email yang sesuai").transform((value) => value.toLowerCase()),
   password: z.string().min(8, "Password minimal 8 karakter"),
-  imgUrl: z.string(),
-  faculty: z.string(),
-  batch: z.number(),
+  confirmPassword: z.string().min(8, "Konfirmasi password minimal 8 karakter"),
+  imgUrl: z.string().trim().min(1).optional().nullable(),
+  faculty: z.string().trim().min(2, "Fakultas wajib diisi"),
+  batch: z.coerce.number().int().min(2020).max(2100),
+}).refine((data) => data.password === data.confirmPassword, {
+  path: ["confirmPassword"],
+  message: "Konfirmasi password tidak sama",
 });
 
 export async function POST(req: NextRequest) {
-  const body = (await req.json());
-
-  await prisma.$connect();
+  let body: unknown;
+  try {
+    body = await req.json();
+  } catch {
+    return serverResponse({ success: false, message: "Validasi gagal", error: "Body JSON tidak valid", status: 400 });
+  }
   try {
     const validateData = UserSchema.parse(body);
-    validateData["password"] = await hash(body["password"], 10);
-
-    const user = await prisma.user.create({data: validateData});
+    const { confirmPassword: _confirmPassword, password, ...profile } = validateData;
+    const user = await prisma.user.create({
+      data: { ...profile, imgUrl: profile.imgUrl || null, password: await hash(password, 12) },
+    });
     
-    const {password, ...responseData} = user;
+    const {password: _storedPassword, ...responseData} = user;
 
-    await prisma.$disconnect();
-
-    return serverResponse({success: true, message: "Berhasil membuat akun", data: responseData})
+    return serverResponse({success: true, message: "Berhasil membuat akun", data: responseData, status: 201})
 
   } catch (error) {
-    await prisma.$disconnect();
-
     if (error instanceof ZodError) {
       const zodErrors: ValidationError[] = error.errors.map((issue) => ({
         field: issue.path[0]?.toString() || "unknown",
@@ -85,10 +91,19 @@ export async function POST(req: NextRequest) {
  *               fullname:
  *                 type: string
  *                 example: Danniel
+ *               lineId:
+ *                 type: string
+ *                 example: danniel26
+ *               whatsappNumber:
+ *                 type: string
+ *                 example: "081234567890"
  *               email:
  *                 type: string
  *                 example: Danniel@email.com
  *               password:
+ *                 type: string
+ *                 example: DannielSigma
+ *               confirmPassword:
  *                 type: string
  *                 example: DannielSigma
  *               imgUrl:
@@ -99,9 +114,9 @@ export async function POST(req: NextRequest) {
  *                 example: Ilmu Komputer
  *               batch:
  *                 type: integer
- *                 example: 2023
+ *                 example: 2026
  *     responses:
- *       200:
+ *       201:
  *         description: Berhasil membuat akun
  *         content:
  *           application/json:
@@ -118,8 +133,8 @@ export async function POST(req: NextRequest) {
  *                   type: object
  *                   properties:
  *                     id:
- *                       type: string
- *                       example: clwq1k2z90000v3l5b8k3z9k1
+ *                       type: integer
+ *                       example: 1
  *                     fullname:
  *                       type: string
  *                       example: Danniel

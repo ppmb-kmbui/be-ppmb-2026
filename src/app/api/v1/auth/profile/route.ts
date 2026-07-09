@@ -1,7 +1,7 @@
 import { NextRequest } from "next/server";
 import { prisma } from "@/lib/prisma";
-import * as jwt from "jose";
 import serverResponse, { InvalidUserResponse } from "@/utils/serverResponse";
+import { authenticateRequest } from "@/lib/auth";
 /**
  * @swagger
  * /api/v1/auth/profile:
@@ -10,16 +10,9 @@ import serverResponse, { InvalidUserResponse } from "@/utils/serverResponse";
  *     tags:
  *       - Auth
  *     description: |
- *       Endpoint ini dapat menggunakan JWT token pada header Authorization (format: Bearer &lt;token&gt;) **atau** langsung menggunakan header X-User-Id. Jika menggunakan JWT, token akan didecode untuk mendapatkan userId. Jika menggunakan X-User-Id, userId akan diambil langsung dari header.
+ *       Endpoint ini membutuhkan JWT valid melalui header Authorization (Bearer token) atau cookie HttpOnly. Header X-User-Id dari client tidak dipercaya.
  *     security:
  *       - bearerAuth: []
- *     parameters:
- *       - in: header
- *         name: X-User-Id
- *         required: false
- *         schema:
- *           type: string
- *         description: User ID (opsional, bisa diisi manual jika tidak menggunakan JWT)
  *     responses:
  *       200:
  *         description: Profile berhasil didapatkan
@@ -71,41 +64,15 @@ import serverResponse, { InvalidUserResponse } from "@/utils/serverResponse";
  */
 
 export async function GET(req: NextRequest) {
-
-  const token = req.headers.get("Authorization")?.split(" ")[1];  
   try {
-    const { payload } = await jwt.jwtVerify(
-      token!,
-      new TextEncoder().encode(process.env.JWT_SECRET),
-      {}
-    );
-    let headers = new Headers(req.headers);
-    if (payload) {
-      headers.set("X-User-Id", payload.sub!.toString());
-      headers.set("X-User-Admin", payload.isAdmin! as string);
-    }
-  } catch (error) {
-    // Just Pass
-  }
-
-  const userId = req.headers.get("X-User-Id");
-  if (!userId) {
-    return InvalidUserResponse;
-  }
-  await prisma.$connect();
-  
-  try {
+    const { userId } = await authenticateRequest(req);
     const user = await prisma.user.findUnique({
-      where: {
-        id: +userId,
-      },
+      where: { id: userId },
     });
-    await prisma.$disconnect();
-    const { password, ...profile } = user!;
+    if (!user) return InvalidUserResponse;
+    const { password: _password, ...profile } = user;
     return serverResponse({success: true, message: "Profile berhasil didapatkan", data: profile});
-
-  } catch (error) {
-    await prisma.$disconnect();
-    return InvalidUserResponse;
-  } 
+  } catch {
+    return serverResponse({ success: false, message: "Tidak diizinkan", error: "JWT Token tidak valid", status: 401 });
+  }
 }

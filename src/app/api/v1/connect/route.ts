@@ -7,7 +7,6 @@ export async function GET(req: NextRequest) {
   if (!userId) {
     return InvalidHeadersResponse;
   }
-  await prisma.$connect();
   try{
     const connections = await prisma.connection.findMany({
       where: {
@@ -16,20 +15,18 @@ export async function GET(req: NextRequest) {
       include: {
         to: {
           omit: {
-            password: false,
+            password: true,
           },
         },
         from: {
           omit: {
-            password: false,
+            password: true,
           },
         },
       },
     });
-    await prisma.$disconnect();
     return serverResponse({success: true, message: "Succesfully retrieved all connection", data: connections, status: 200});
   } catch (error) {
-    await prisma.$disconnect();
     return InvalidUserResponse;
   }
 }
