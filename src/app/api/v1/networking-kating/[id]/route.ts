@@ -1,18 +1,28 @@
+import { authenticateRequest } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
-import serverResponse, { InvalidHeadersResponse } from "@/utils/serverResponse";
+import serverResponse, { unauthorizedResponse } from "@/utils/serverResponse";
 import { NextRequest } from "next/server";
 import { CURRENT_BATCH } from "@/lib/const";
 
 export async function GET(req: NextRequest, { params }: {params: Promise<{id: string}>}) {
-    const userId = req.headers.get('X-User-Id');
-    const targetId = (await params).id;
+    let userId: number;
+    try {
+        ({ userId } = await authenticateRequest(req));
+    } catch {
+        return unauthorizedResponse();
+    }
+
+    const targetId = Number((await params).id);
+    if (!Number.isInteger(targetId) || targetId <= 0) {
+        return serverResponse({ success: false, message: "Request tidak valid", error: "Target kating tidak valid", status: 400 });
+    }
     const response = await checkUser(userId, targetId);
     if (response !== null) return response;
 
     const networkingKating = await prisma.networkingKatingTask.findFirst({
         where: {
-            fromId: +userId!,
-            toId: +targetId
+            fromId: userId,
+            toId: targetId
         },
         include: {
             to: true,
@@ -33,7 +43,10 @@ export async function GET(req: NextRequest, { params }: {params: Promise<{id: st
 }
 
 interface SubmitAnswerNetworkingKatingTaskDto {
-    img_url: string,
+    file_url?: string,
+    pdf_url?: string,
+    pdfUrl?: string,
+    img_url?: string,
     description?: string,
     answers?: {
         answer: string
@@ -49,8 +62,17 @@ interface SubmitAnswerNetworkingKatingTaskDto {
 }
 
 export async function POST(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
-    const userId = req.headers.get('X-User-Id');
-    const targetId = (await params).id;
+    let userId: number;
+    try {
+        ({ userId } = await authenticateRequest(req));
+    } catch {
+        return unauthorizedResponse();
+    }
+
+    const targetId = Number((await params).id);
+    if (!Number.isInteger(targetId) || targetId <= 0) {
+        return serverResponse({ success: false, message: "Request tidak valid", error: "Target kating tidak valid", status: 400 });
+    }
 
     let body: SubmitAnswerNetworkingKatingTaskDto;
     try {
@@ -65,17 +87,22 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     }
 
     const template = {
-        img_url: "string",
+        file_url: "string (URL PDF)",
+        img_url: "string (legacy, opsional)",
         description: "string (opsional, sebagai pengganti answers)",
         answers: [{ answer: "string" }],
         optionalAnswers: { question: "string", answer: "string" }
     };
 
     const optionalAnswer = body.optionalAnswers ?? body.optionalAnswes;
+    const canonicalFileUrl = body.file_url?.trim() || body.pdf_url?.trim() || body.pdfUrl?.trim() || undefined;
+    const legacyImageUrl = body.img_url?.trim() || undefined;
+    const attachmentData = canonicalFileUrl
+        ? { file_url: canonicalFileUrl }
+        : { img_url: legacyImageUrl! };
     const hasLegacyAnswers = body.answers?.length === 7 && !!optionalAnswer;
-    const hasSimpleDescription = !!body.description?.trim();
 
-    if (!body.img_url || (!hasLegacyAnswers && !hasSimpleDescription)) {
+    if (!canonicalFileUrl && !legacyImageUrl) {
         return serverResponse({
             success: false,
             message: "Operasi gagal",
@@ -86,21 +113,12 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
         });
     }
 
-    if (body.answers && body.answers.length !== 7) {
-        return serverResponse({
-            success: false,
-            message: "Operasi gagal",
-            error: "Banyak pertanyaan seharusnya 7",
-            data: { template },
-            status: 400
-        });
-    }
     const userCheck = await checkUser(userId, targetId);
     if (userCheck !== null) {
         return userCheck;
     }
 
-    const senior = await prisma.seniorUser.findFirst({ where: { id: +targetId } });
+    const senior = await prisma.seniorUser.findFirst({ where: { id: targetId } });
     if (!senior) {
         return serverResponse({
             success: false,
@@ -110,11 +128,11 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
         });
     }
 
-    if (hasSimpleDescription && !hasLegacyAnswers) {
+    if (!hasLegacyAnswers) {
         const networkingKatingAnswer = await prisma.networkingKatingTask.upsert({
-            where: { fromId_toId: { fromId: +userId!, toId: +targetId } },
-            update: { img_url: body.img_url, description: body.description!.trim() },
-            create: { fromId: +userId!, toId: +targetId, img_url: body.img_url, description: body.description!.trim() },
+            where: { fromId_toId: { fromId: userId, toId: targetId } },
+            update: { ...attachmentData, description: body.description?.trim() },
+            create: { fromId: userId, toId: targetId, ...attachmentData, description: body.description?.trim() },
             include: {
                 to: true,
                 from: { omit: { password: true } },
@@ -127,14 +145,14 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     await prisma.networkingKatingTask.upsert({
         where: {
             fromId_toId: {
-                fromId: +userId!,
-                toId: +targetId
+                fromId: userId,
+                toId: targetId
             }
         },
         update: {},
         create: {
-            fromId: +userId!,
-            toId: +targetId
+            fromId: userId,
+            toId: targetId
         }
     });
 
@@ -148,8 +166,8 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     const questionTasks = [
         prisma.questionKatingTask.create({
             data: {
-                fromId: +userId!,
-                toId: +targetId,
+                fromId: userId,
+                toId: targetId,
                 questionId: newQuestion.id,
                 answer: optionalAnswer!.answer
             }
@@ -158,8 +176,8 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
             prisma.questionKatingTask.create({
                 data: {
                     questionId: idx + 1,
-                    fromId: +userId!,
-                    toId: +targetId,
+                    fromId: userId,
+                    toId: targetId,
                     answer: answerObj.answer,
                 }
             })
@@ -171,11 +189,11 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     const networkingKatingAnswer = await prisma.networkingKatingTask.update({
         where: {
             fromId_toId: {
-                fromId: +userId!,
-                toId: +targetId
+                fromId: userId,
+                toId: targetId
             }
         },
-        data: { img_url: body.img_url, description: body.description?.trim() },
+        data: { ...attachmentData, description: body.description?.trim() },
         include: {
             to: true,
             from: { omit: { password: true } },
@@ -190,14 +208,10 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     });
 }
 
-async function checkUser(userId: string | null, targetId: string | null) {
-    if (!userId || !targetId) {
-        return InvalidHeadersResponse;
-    } 
-
+async function checkUser(userId: number, targetId: number) {
     const user = await prisma.user.findFirst({
         where: {
-            id: +userId
+            id: userId
         }
     });
 

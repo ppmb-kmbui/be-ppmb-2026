@@ -1,15 +1,19 @@
 import { prisma } from "@/lib/prisma";
+import { authenticateRequest } from "@/lib/auth";
 import { NextRequest } from "next/server";
-import serverResponse, { InvalidHeadersResponse } from "@/utils/serverResponse";
+import serverResponse, { unauthorizedResponse } from "@/utils/serverResponse";
 
 export async function GET(req: NextRequest) {
-  const userId = req.headers.get("X-User-Id");
-  if (!userId) {
-    return InvalidHeadersResponse;
+  let userId: number;
+  try {
+    ({ userId } = await authenticateRequest(req));
+  } catch {
+    return unauthorizedResponse();
   }
+
   const conns = await prisma.networkingKatingTask.findMany({
     where: {
-      fromId: +userId,
+      fromId: userId,
     },
     include: {
       to: true,

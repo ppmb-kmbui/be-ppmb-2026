@@ -1,11 +1,16 @@
+import { authenticateRequest } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
-import serverResponse from "@/utils/serverResponse";
+import serverResponse, { forbiddenResponse, unauthorizedResponse } from "@/utils/serverResponse";
 import { NextRequest } from "next/server";
 
 export async function GET(req: NextRequest) {
-  if (req.headers.get("X-User-Admin") !== "true") {
-    return serverResponse({ success: false, message: "Forbidden", error: "Akses admin dibutuhkan", status: 403 });
+  try {
+    const { isAdmin } = await authenticateRequest(req);
+    if (!isAdmin) return forbiddenResponse();
+  } catch {
+    return unauthorizedResponse();
   }
+
   const page = Math.max(1, Number(req.nextUrl.searchParams.get("page")) || 1);
   const limit = Math.min(50, Math.max(1, Number(req.nextUrl.searchParams.get("limit")) || 20));
   const search = req.nextUrl.searchParams.get("search")?.trim();
@@ -26,7 +31,14 @@ export async function GET(req: NextRequest) {
         _count: {
           select: {
             NetworkingTaskSender: { where: { is_done: true } },
-            NetworkingKatingTaskSender: true,
+            NetworkingKatingTaskSender: {
+              where: {
+                OR: [
+                  { file_url: { not: null } },
+                  { img_url: { not: null } },
+                ],
+              },
+            },
             ExplorerSubmission: true,
             MentoringVlogSubmission: true,
             MentoringReflection: true,
@@ -42,9 +54,9 @@ export async function GET(req: NextRequest) {
   const data = users.map(({ _count, ...user }) => {
     const completed = Math.min(20, _count.NetworkingTaskSender + _count.NetworkingKatingTaskSender) +
       Math.min(1, _count.ExplorerSubmission) +
-      Math.min(2, _count.MentoringVlogSubmission + _count.MentoringReflection) +
+      Math.min(1, _count.MentoringVlogSubmission + _count.MentoringReflection) +
       Math.min(3, _count.FirstFossibSessionSubmission + _count.SecondFossibSessionSubmission + _count.InsightHuntingSubmission);
-    return { ...user, progress: { completed, required: 26, percentage: Math.round((completed / 26) * 100) } };
+    return { ...user, progress: { completed, required: 25, percentage: Math.round((completed / 25) * 100) } };
   });
 
   return serverResponse({

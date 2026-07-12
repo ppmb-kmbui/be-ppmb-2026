@@ -1,7 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
-import * as jwt from "jose";
 import serverResponse from "./utils/serverResponse";
-import { getJwtSecret } from "./lib/auth";
+import { getAccessToken, verifyAccessToken } from "./lib/auth";
 
 const allowedOrigins = new Set([
   "https://ppmbkmbui.com",
@@ -38,21 +37,12 @@ export async function middleware(req: NextRequest) {
     return applyCors(NextResponse.next(), origin);
   }
 
-  const token = req.headers.get("authorization")?.replace(/^Bearer\s+/i, "") ||
-    req.cookies.get("ppmb_access_token")?.value;
+  const token = getAccessToken(req);
 
   try {
     if (!token) throw new Error("Token tidak ditemukan");
-    const { payload } = await jwt.jwtVerify(token, getJwtSecret(), {
-      algorithms: ["HS256"],
-    });
-    if (!payload.sub) throw new Error("Subject token tidak ditemukan");
-
-    const headers = new Headers(req.headers);
-    headers.set("X-User-Id", payload.sub);
-    headers.set("X-User-Admin", payload.is_admin === true ? "true" : "false");
-
-    return applyCors(NextResponse.next({ request: { headers } }), origin);
+    await verifyAccessToken(token);
+    return applyCors(NextResponse.next(), origin);
   } catch {
     return applyCors(serverResponse({
       success: false,

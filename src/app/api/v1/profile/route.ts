@@ -1,6 +1,7 @@
 import { prisma } from "@/lib/prisma";
+import { authenticateRequest } from "@/lib/auth";
 import { NextRequest } from "next/server";
-import serverResponse, { InvalidHeadersResponse, InvalidUserResponse } from "@/utils/serverResponse";
+import serverResponse, { InvalidUserResponse, unauthorizedResponse } from "@/utils/serverResponse";
 import { z } from "zod";
 
 const UpdateProfileSchema = z.object({
@@ -12,13 +13,15 @@ const UpdateProfileSchema = z.object({
 }).refine((value) => Object.keys(value).length > 0, "Minimal satu field harus diisi");
 
 export async function GET(req: NextRequest) {
-  const userId = req.headers.get("X-User-Id");
-  if (!userId) {
-    return InvalidHeadersResponse;
+  let userId: number;
+  try {
+    ({ userId } = await authenticateRequest(req));
+  } catch {
+    return unauthorizedResponse();
   }
   const user = await prisma.user.findUnique({
     where: {
-      id: +userId,
+      id: userId,
     },
     include: {
       _count: {
@@ -28,7 +31,7 @@ export async function GET(req: NextRequest) {
       },
       NetworkingTaskSender: {
         where: {
-          fromId: +userId,
+          fromId: userId,
           is_done: true,
         },
         include: {
@@ -68,9 +71,11 @@ export async function GET(req: NextRequest) {
 }
 
 export async function PUT(req: NextRequest) {
-  const userId = req.headers.get("X-User-Id");
-  if (!userId) {
-    return InvalidHeadersResponse;
+  let userId: number;
+  try {
+    ({ userId } = await authenticateRequest(req));
+  } catch {
+    return unauthorizedResponse();
   }
   let body: z.infer<typeof UpdateProfileSchema>;
   try {
@@ -85,7 +90,7 @@ export async function PUT(req: NextRequest) {
   }
   const user = await prisma.user.update({
     where: {
-      id: +userId,
+      id: userId,
     },
     data: body,
     omit: {

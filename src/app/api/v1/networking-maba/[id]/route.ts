@@ -1,21 +1,27 @@
+import { authenticateRequest } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
-import serverResponse, { InvalidHeadersResponse } from "@/utils/serverResponse";
+import serverResponse, { unauthorizedResponse } from "@/utils/serverResponse";
 import { NextRequest } from "next/server";
-import { Result } from "postcss";
 
 export async function GET(req: NextRequest, props: { params: Promise<{ id: string }> }) {
-  const params = await props.params;
-  const userId = req.headers.get("X-User-Id");
-  const targetId = params.id;
+  let userId: number;
+  try {
+    ({ userId } = await authenticateRequest(req));
+  } catch {
+    return unauthorizedResponse();
+  }
 
-  if (!userId || !targetId) {
-    return InvalidHeadersResponse;
+  const params = await props.params;
+  const targetId = Number(params.id);
+
+  if (!Number.isInteger(targetId) || targetId <= 0) {
+    return serverResponse({ success: false, message: "Request tidak valid", error: "Target user tidak valid", status: 400 });
   }
   const connection = await prisma.networkingTask.findUnique({
     where: {
       fromId_toId: {
-        fromId: +userId,
-        toId: +targetId,
+        fromId: userId,
+        toId: targetId,
       },
     },
     include: {
@@ -35,17 +41,23 @@ export async function GET(req: NextRequest, props: { params: Promise<{ id: strin
 }
 
 export async function POST(req: NextRequest, props: { params: Promise<{ id: string }> }) {
-  const params = await props.params;
-  const userId = req.headers.get("X-User-Id");
-  const targetId = params.id;
+  let userId: number;
+  try {
+    ({ userId } = await authenticateRequest(req));
+  } catch {
+    return unauthorizedResponse();
+  }
 
-  if (!userId || !targetId) {
-    return InvalidHeadersResponse;
+  const params = await props.params;
+  const targetId = Number(params.id);
+
+  if (!Number.isInteger(targetId) || targetId <= 0) {
+    return serverResponse({ success: false, message: "Request tidak valid", error: "Target user tidak valid", status: 400 });
   }
   const connection = await prisma.connection.findFirst({
     where: {
-      fromId: +userId,
-      toId: +targetId,
+      fromId: userId,
+      toId: targetId,
     },
   });
 
@@ -56,8 +68,8 @@ export async function POST(req: NextRequest, props: { params: Promise<{ id: stri
   const networking = await prisma.networkingTask.findUnique({
     where: {
       fromId_toId: {
-        fromId: +userId,
-        toId: +targetId,
+        fromId: userId,
+        toId: targetId,
       },
     },
     include: {
@@ -89,8 +101,8 @@ export async function POST(req: NextRequest, props: { params: Promise<{ id: stri
 
   const newTask = await prisma.networkingTask.create({
     data: {
-      fromId: +userId,
-      toId: +targetId,
+      fromId: userId,
+      toId: targetId,
     },
   });
 
@@ -136,8 +148,8 @@ export async function POST(req: NextRequest, props: { params: Promise<{ id: stri
   const result = await prisma.networkingTask.findUnique({
     where: {
       fromId_toId: {
-        fromId: +userId,
-        toId: +targetId,
+        fromId: userId,
+        toId: targetId,
       },
     },
     include: {
@@ -162,7 +174,10 @@ export async function POST(req: NextRequest, props: { params: Promise<{ id: stri
 }
 
 interface SubmitNetworkingTaskDTO {
-  img_url: string;
+  file_url?: string;
+  pdf_url?: string;
+  pdfUrl?: string;
+  img_url?: string;
   description?: string;
   answers?: {
     questionId: number;
@@ -175,26 +190,41 @@ interface SubmitNetworkingTaskDTO {
 }
 
 export async function PUT(req: NextRequest, props: { params: Promise<{ id: string }> }) {
-  const params = await props.params;
-  const userId = req.headers.get("X-User-Id");
-  const targetId = params.id;
-
-  if (!userId || !targetId) {
-    return InvalidHeadersResponse;
+  let userId: number;
+  try {
+    ({ userId } = await authenticateRequest(req));
+  } catch {
+    return unauthorizedResponse();
   }
 
-  const body = (await req.json()) as SubmitNetworkingTaskDTO;
+  const params = await props.params;
+  const targetId = Number(params.id);
 
+  if (!Number.isInteger(targetId) || targetId <= 0) {
+    return serverResponse({ success: false, message: "Request tidak valid", error: "Target user tidak valid", status: 400 });
+  }
+
+  let body: SubmitNetworkingTaskDTO;
+  try {
+    body = (await req.json()) as SubmitNetworkingTaskDTO;
+  } catch {
+    return serverResponse({ success: false, message: "Request body tidak valid", error: "Body harus berupa JSON", status: 400 });
+  }
+
+  const canonicalFileUrl = body.file_url?.trim() || body.pdf_url?.trim() || body.pdfUrl?.trim() || undefined;
+  const legacyImageUrl = body.img_url?.trim() || undefined;
+  const attachmentData = canonicalFileUrl
+    ? { file_url: canonicalFileUrl }
+    : { img_url: legacyImageUrl! };
   const hasLegacyAnswers = !!body.answers?.length && !!body.secondary_answers;
-  const hasSimpleDescription = !!body.description?.trim();
-  if (!body.img_url || (!hasLegacyAnswers && !hasSimpleDescription)) {
-    return serverResponse({success: false, message: "Request body tidak lengkap" ,error: "Pastikan img_url serta description atau answers tidak kosong", status: 400});
+  if (!canonicalFileUrl && !legacyImageUrl) {
+    return serverResponse({success: false, message: "Request body tidak lengkap" ,error: "Pastikan file_url PDF diisi", status: 400});
   }
   const networking_tasks = await prisma.networkingTask.findFirst(
     {
       where: {
-        fromId: +userId,
-        toId: +targetId
+        fromId: userId,
+        toId: targetId
       }, 
       select: {
         questions: true,
@@ -213,10 +243,10 @@ export async function PUT(req: NextRequest, props: { params: Promise<{ id: strin
     return serverResponse({success: false, message: "Operasi gagal" ,error: "User sudah selesai networking dengan target user", status: 400});
   }
 
-  if (hasSimpleDescription && !hasLegacyAnswers) {
+  if (!hasLegacyAnswers) {
     const res = await prisma.networkingTask.update({
-      where: { fromId_toId: { fromId: +userId, toId: +targetId } },
-      data: { img_url: body.img_url, description: body.description!.trim(), is_done: true },
+      where: { fromId_toId: { fromId: userId, toId: targetId } },
+      data: { ...attachmentData, description: body.description?.trim(), is_done: true },
       include: {
         to: { omit: { password: true } },
         from: { omit: { password: true } },
@@ -224,7 +254,7 @@ export async function PUT(req: NextRequest, props: { params: Promise<{ id: strin
       },
     });
     await prisma.connection.updateMany({
-      where: { fromId: +userId, toId: +targetId },
+      where: { fromId: userId, toId: targetId },
       data: { status: "done" },
     });
     return serverResponse({ success: true, message: "Berhasil submit networking", data: res, status: 200 });
@@ -249,8 +279,8 @@ export async function PUT(req: NextRequest, props: { params: Promise<{ id: strin
         where: {
           questionId_fromId_toId: {
             questionId,
-            fromId: +userId,
-            toId: +targetId,
+            fromId: userId,
+            toId: targetId,
           },
         },
         data: {
@@ -269,8 +299,8 @@ export async function PUT(req: NextRequest, props: { params: Promise<{ id: strin
 
   await prisma.questionTask.create({
     data: {
-      fromId: +userId,
-      toId: +targetId,
+      fromId: userId,
+      toId: targetId,
       questionId: user_question.id,
       answer: body.secondary_answers!.answer,
     }
@@ -279,12 +309,12 @@ export async function PUT(req: NextRequest, props: { params: Promise<{ id: strin
   const res = await prisma.networkingTask.update({
     where: {
       fromId_toId: {
-        fromId: +userId,
-        toId: +targetId,
+        fromId: userId,
+        toId: targetId,
       },
     },
     data: {
-      img_url: body.img_url,
+      ...attachmentData,
       description: body.description?.trim(),
       is_done: true,
     },
@@ -309,8 +339,8 @@ export async function PUT(req: NextRequest, props: { params: Promise<{ id: strin
 
   await prisma.connection.updateMany({
     where: {
-      fromId: +userId,
-      toId: +targetId,
+      fromId: userId,
+      toId: targetId,
     },
     data: {
       status: "done",

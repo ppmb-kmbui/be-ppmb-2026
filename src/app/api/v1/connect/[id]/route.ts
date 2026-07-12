@@ -1,19 +1,25 @@
 import { prisma } from "@/lib/prisma";
-import serverResponse, { InvalidHeadersResponse, InvalidTargetUserResponse, InvalidUserResponse } from "@/utils/serverResponse";
+import { authenticateRequest } from "@/lib/auth";
+import serverResponse, { InvalidTargetUserResponse, unauthorizedResponse } from "@/utils/serverResponse";
 import { NextRequest } from "next/server";
 
 export async function POST(req: NextRequest, props: { params: Promise<{ id: string }> }) {
+  let userId: number;
+  try {
+    ({ userId } = await authenticateRequest(req));
+  } catch {
+    return unauthorizedResponse();
+  }
   const params = await props.params;
-  const userId = req.headers.get("X-User-Id");
-  const targetId = params.id;
+  const targetId = Number(params.id);
 
-  if (!userId || !targetId) {
-    return InvalidHeadersResponse;
+  if (!Number.isInteger(targetId) || targetId <= 0) {
+    return serverResponse({ success: false, message: "Bad Request", error: "Target user ID tidak valid", status: 400 });
   }
   const sent = await prisma.connectionRequest.findFirst({
     where: {
-      fromId: +userId,
-      toId: +targetId,
+      fromId: userId,
+      toId: targetId,
     },
   });
 
@@ -23,8 +29,8 @@ export async function POST(req: NextRequest, props: { params: Promise<{ id: stri
 
   const recieved = await prisma.connectionRequest.findFirst({
     where: {
-      fromId: +targetId,
-      toId: +userId,
+      fromId: targetId,
+      toId: userId,
     },
   });
 
@@ -34,8 +40,8 @@ export async function POST(req: NextRequest, props: { params: Promise<{ id: stri
   
   const connectionRequest = await prisma.connectionRequest.create({
     data: {
-      fromId: +userId,
-      toId: +targetId,
+      fromId: userId,
+      toId: targetId,
       status: "pending",
     },
   });
@@ -48,17 +54,22 @@ export async function POST(req: NextRequest, props: { params: Promise<{ id: stri
 }
 
 export async function PUT(req: NextRequest, props: { params: Promise<{ id: string }> }) {
+  let userId: number;
+  try {
+    ({ userId } = await authenticateRequest(req));
+  } catch {
+    return unauthorizedResponse();
+  }
   const params = await props.params;
-  const userId = req.headers.get("X-User-Id");
-  const targetId = params.id;
+  const targetId = Number(params.id);
 
-  if (!userId || !targetId) {
-    return InvalidHeadersResponse;
+  if (!Number.isInteger(targetId) || targetId <= 0) {
+    return serverResponse({ success: false, message: "Bad Request", error: "Target user ID tidak valid", status: 400 });
   }
   const connectionRequest = await prisma.connectionRequest.findFirst({
     where: {
-      fromId: +targetId,
-      toId: +userId,
+      fromId: targetId,
+      toId: userId,
       status: "pending"
     },
   })
@@ -70,15 +81,15 @@ export async function PUT(req: NextRequest, props: { params: Promise<{ id: strin
   const transaction = await prisma.$transaction([
     prisma.connection.create({
       data: {
-        fromId: +userId,
-        toId: +targetId,
+        fromId: userId,
+        toId: targetId,
         status: "accepted",
       },
     }),
     prisma.connection.create({
       data: {
-        fromId: +targetId,
-        toId: +userId,
+        fromId: targetId,
+        toId: userId,
         status: "accepted",
       },
     }),
@@ -86,12 +97,12 @@ export async function PUT(req: NextRequest, props: { params: Promise<{ id: strin
       where: {
         OR: [
           {
-            fromId: +userId,
-            toId: +targetId,
+            fromId: userId,
+            toId: targetId,
           },
           {
-            fromId: +targetId,
-            toId: +userId,
+            fromId: targetId,
+            toId: userId,
           },
         ],
       },
@@ -105,15 +116,20 @@ export async function PUT(req: NextRequest, props: { params: Promise<{ id: strin
 }
 
 export async function DELETE(req: NextRequest, props: { params: Promise<{ id: string }> }) {
+  let userId: number;
+  try {
+    ({ userId } = await authenticateRequest(req));
+  } catch {
+    return unauthorizedResponse();
+  }
   const params = await props.params;
-  const userId = req.headers.get("X-User-Id");
-  const targetId = params.id;
+  const targetId = Number(params.id);
 
-  if (!userId || !targetId) {
-    return InvalidHeadersResponse;
+  if (!Number.isInteger(targetId) || targetId <= 0) {
+    return serverResponse({ success: false, message: "Bad Request", error: "Target user ID tidak valid", status: 400 });
   }
   const targetUser = await prisma.user.findUnique({
-    where: { id: +targetId },
+    where: { id: targetId },
   });
 
   if (!targetUser) {
@@ -124,8 +140,8 @@ export async function DELETE(req: NextRequest, props: { params: Promise<{ id: st
   try {
     connr = await prisma.connectionRequest.deleteMany({
       where: {
-        fromId: +targetId,
-        toId: +userId,
+        fromId: targetId,
+        toId: userId,
         status: {
           not: {
             equals: "accepted",

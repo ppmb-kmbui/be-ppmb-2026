@@ -11,7 +11,8 @@
     "db:generate": "prisma generate",
     "db:validate": "prisma validate",
     "db:migrate": "prisma migrate deploy",
-    "db:seed": "prisma db seed"
+    "db:seed": "prisma db seed",
+    "test:auth-routes": "tsx scripts/check-route-auth.ts"
   },
   "dependencies": {
     "@prisma/adapter-pg": "7.8.0",

@@ -1,14 +1,19 @@
 import { CLUSTERS, SENIOR_BATCHES } from "@/lib/const";
+import { authenticateRequest } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
-import serverResponse from "@/utils/serverResponse";
+import serverResponse, { forbiddenResponse, unauthorizedResponse } from "@/utils/serverResponse";
 import { NextRequest } from "next/server";
 
 export const maxDuration = 60;
 
 export async function GET(req: NextRequest, props: { params: Promise<{ id: string }> }) {
-  if (req.headers.get("X-User-Admin") !== "true") {
-    return serverResponse({ success: false, message: "Forbidden", error: "Akses admin dibutuhkan", status: 403 });
+  try {
+    const { isAdmin } = await authenticateRequest(req);
+    if (!isAdmin) return forbiddenResponse();
+  } catch {
+    return unauthorizedResponse();
   }
+
   const { id } = await props.params;
   const userId = Number(id);
   if (!Number.isInteger(userId) || userId <= 0) {
@@ -51,11 +56,13 @@ export async function GET(req: NextRequest, props: { params: Promise<{ id: strin
     else if (faculty && CLUSTERS.RIK_VOK.includes(faculty)) facultyProgress.RIK_VOK++;
     else facultyProgress.OTHER++;
   }
-  const seniorProgress = Object.fromEntries(SENIOR_BATCHES.map((batch) => [batch, networkingKating.filter((item) => item.to.batch === batch).length]));
+  const completedNetworkingKating = networkingKating.filter((item) => item.file_url || item.img_url);
+  const seniorProgress = Object.fromEntries(SENIOR_BATCHES.map((batch) => [batch, completedNetworkingKating.filter((item) => item.to.batch === batch).length]));
+  const mentoringSubmission = mentoringVlog ?? mentoringReflection;
   const status = {
-    networking: networkingAngkatan.some((item) => item.is_done) || networkingKating.length > 0,
+    networking: networkingAngkatan.some((item) => item.is_done) || completedNetworkingKating.length > 0,
     explorer: !!explorer,
-    mentoring: !!mentoringReflection || !!mentoringVlog,
+    mentoring: !!mentoringSubmission,
     fosterSiblings: !!fossib1 || !!fossib2 || !!insightHunting,
   };
 
@@ -69,7 +76,7 @@ export async function GET(req: NextRequest, props: { params: Promise<{ id: strin
       submissions: {
         networking: { peers: networkingAngkatan, seniors: networkingKating },
         explorer,
-        mentoring: { vlog: mentoringVlog, reflection: mentoringReflection },
+        mentoring: { vlog: mentoringVlog, reflection: mentoringReflection, submission: mentoringSubmission },
         fosterSiblings: { first: fossib1, second: fossib2, insightHunting },
       },
     },

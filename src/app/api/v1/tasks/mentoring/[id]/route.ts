@@ -1,12 +1,15 @@
+import { authenticateRequest } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
-import serverResponse, { InvalidHeadersResponse } from "@/utils/serverResponse";
+import serverResponse, { unauthorizedResponse } from "@/utils/serverResponse";
 import { NextRequest } from "next/server";
 import { z } from "zod";
 
 const VlogSchema = z.object({
-  file_url: z.string().trim().min(1, "URL video wajib diisi"),
+  file_url: z.string().trim().min(1).optional(),
+  gdrive_url: z.string().trim().min(1).optional(),
+  gdriveUrl: z.string().trim().min(1).optional(),
   description: z.string().trim().min(1).optional(),
-});
+}).refine((body) => body.file_url || body.gdrive_url || body.gdriveUrl, "Link Google Drive wajib diisi");
 
 const ReflectionSchema = z.object({
   file_url: z.string().trim().min(1).optional(),
@@ -15,22 +18,30 @@ const ReflectionSchema = z.object({
 
 export async function POST(req: NextRequest, props: { params: Promise<{ id: string }> }) {
   const { id } = await props.params;
-  const userId = req.headers.get("X-User-Id");
-  if (!userId) return InvalidHeadersResponse;
+  let userId: number;
+  try {
+    ({ userId } = await authenticateRequest(req));
+  } catch {
+    return unauthorizedResponse();
+  }
 
   try {
     const raw = await req.json();
-    if (id === "vlog") {
-      const body = VlogSchema.parse(raw);
+    if (id === "vlog" || id === "submission" || id === "gdrive") {
+      const parsed = VlogSchema.parse(raw);
+      const body = {
+        file_url: parsed.gdrive_url ?? parsed.gdriveUrl ?? parsed.file_url!,
+        description: parsed.description,
+      };
       const data = await prisma.mentoringVlogSubmission.upsert({
-        where: { userId: +userId }, update: body, create: { ...body, userId: +userId },
+        where: { userId }, update: body, create: { ...body, userId },
       });
       return serverResponse({ success: true, message: "Vlog mentoring tersimpan", data, status: 200 });
     }
     if (id === "reflection") {
       const body = ReflectionSchema.parse(raw);
       const data = await prisma.mentoringReflection.upsert({
-        where: { userId: +userId }, update: body, create: { ...body, userId: +userId },
+        where: { userId }, update: body, create: { ...body, userId },
       });
       return serverResponse({ success: true, message: "Refleksi mentoring tersimpan", data, status: 200 });
     }

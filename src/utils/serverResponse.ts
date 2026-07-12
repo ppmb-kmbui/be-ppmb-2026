@@ -21,3 +21,21 @@ export const InvalidUserResponse = serverResponse({success: false, message: "Inv
 export const InvalidTargetUserResponse = serverResponse({success: false, message: "Invalid", error: "Target User tidak ditemukan", status: 404});
 
 export const InvalidHeadersResponse = serverResponse({success: false, message: "Not Authorized", error: "Headers tidak ditemukan", status: 400});
+
+export function unauthorizedResponse() {
+    return serverResponse({
+        success: false,
+        message: "Tidak diizinkan",
+        error: "JWT token tidak valid atau tidak ditemukan",
+        status: 401,
+    });
+}
+
+export function forbiddenResponse() {
+    return serverResponse({
+        success: false,
+        message: "Forbidden",
+        error: "Akses admin dibutuhkan",
+        status: 403,
+    });
+}

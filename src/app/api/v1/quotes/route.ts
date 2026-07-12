@@ -1,10 +1,14 @@
 import { prisma } from "@/lib/prisma";
+import { authenticateRequest } from "@/lib/auth";
 import { NextRequest } from "next/server";
+import { unauthorizedResponse } from "@/utils/serverResponse";
 
 export async function POST(req: NextRequest) {
-  const userId = req.headers.get("X-User-Id");
-  if (!userId) {
-    return new Response("Unauthorized", { status: 401 });
+  let userId: number;
+  try {
+    ({ userId } = await authenticateRequest(req));
+  } catch {
+    return unauthorizedResponse();
   }
   const body = await req.json();
   if (!body) {
@@ -13,7 +17,7 @@ export async function POST(req: NextRequest) {
   const quote = await prisma.quotes.create({
     data: {
       quote: body.quote,
-      userId: +userId,
+      userId,
     },
     include: {
       user: {

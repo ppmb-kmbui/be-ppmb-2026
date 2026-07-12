@@ -15,8 +15,9 @@ export function getJwtSecret(): Uint8Array {
 
 export function getAccessToken(req: NextRequest): string | null {
   const authorization = req.headers.get("authorization");
-  if (authorization?.startsWith("Bearer ")) {
-    return authorization.slice(7).trim() || null;
+  const bearerMatch = authorization?.match(/^Bearer\s+(.+)$/i);
+  if (bearerMatch) {
+    return bearerMatch[1].trim() || null;
   }
   return req.cookies.get("ppmb_access_token")?.value ?? null;
 }

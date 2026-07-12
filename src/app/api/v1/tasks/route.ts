@@ -1,15 +1,19 @@
 import { CLUSTERS, NETWORKING_BATCHES, SENIOR_BATCHES } from "@/lib/const";
+import { authenticateRequest } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
-import serverResponse, { InvalidHeadersResponse } from "@/utils/serverResponse";
+import serverResponse, { unauthorizedResponse } from "@/utils/serverResponse";
 import { NextRequest } from "next/server";
 
 const percentage = (completed: number, required: number) =>
   required === 0 ? 0 : Math.min(100, Math.round((completed / required) * 100));
 
 export async function GET(req: NextRequest) {
-  const userIdHeader = req.headers.get("X-User-Id");
-  if (!userIdHeader) return InvalidHeadersResponse;
-  const userId = +userIdHeader;
+  let userId: number;
+  try {
+    ({ userId } = await authenticateRequest(req));
+  } catch {
+    return unauthorizedResponse();
+  }
 
   const [networkingAngkatan, networkingKating, fossib1, fossib2, insightHunting, mentoringVlog, mentoringReflection, explorer] = await Promise.all([
     prisma.networkingTask.findMany({
@@ -17,7 +21,10 @@ export async function GET(req: NextRequest) {
       select: { to: { select: { faculty: true, batch: true } } },
     }),
     prisma.networkingKatingTask.findMany({
-      where: { fromId: userId },
+      where: {
+        fromId: userId,
+        OR: [{ file_url: { not: null } }, { img_url: { not: null } }],
+      },
       select: { to: { select: { batch: true } } },
     }),
     prisma.firstFossibSessionSubmission.findUnique({ where: { userId } }),
@@ -57,7 +64,8 @@ export async function GET(req: NextRequest) {
   }
 
   const networkingCompleted = networkingAngkatan.length + networkingKating.length;
-  const mentoringCompleted = Number(!!mentoringVlog) + Number(!!mentoringReflection);
+  const mentoringSubmission = mentoringVlog ?? mentoringReflection;
+  const mentoringCompleted = Number(!!mentoringSubmission);
   const fossibCompleted = Number(!!fossib1) + Number(!!fossib2) + Number(!!insightHunting);
 
   return serverResponse({
@@ -70,12 +78,13 @@ export async function GET(req: NextRequest) {
       firstFossibDone: !!fossib1,
       secondFossibDone: !!fossib2,
       insightHuntingDone: !!insightHunting,
+      mentoringDone: !!mentoringSubmission,
       mentoringVlogDone: !!mentoringVlog,
       mentoringReflectionDone: !!mentoringReflection,
       cards: {
         networking: { completed: networkingCompleted, required: 20, percentage: percentage(networkingCompleted, 20) },
         explorer: { completed: Number(!!explorer), required: 1, percentage: percentage(Number(!!explorer), 1) },
-        mentoring: { completed: mentoringCompleted, required: 2, percentage: percentage(mentoringCompleted, 2) },
+        mentoring: { completed: mentoringCompleted, required: 1, percentage: percentage(mentoringCompleted, 1) },
         fosterSiblings: { completed: fossibCompleted, required: 3, percentage: percentage(fossibCompleted, 3) },
       },
     },

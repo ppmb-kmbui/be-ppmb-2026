@@ -351,6 +351,7 @@ async function seedNetworking(users: Awaited<ReturnType<typeof seedUsers>>, seni
     },
     update: {
       img_url: `${SEED_IMAGE}?text=Nala+Bima`,
+      file_url: "https://example.com/seed/networking/nala-bima.pdf",
       description: "Networking maba dengan Bima setelah sesi PPMB.",
       is_done: true,
     },
@@ -358,6 +359,7 @@ async function seedNetworking(users: Awaited<ReturnType<typeof seedUsers>>, seni
       fromId: users.nala.id,
       toId: users.bima.id,
       img_url: `${SEED_IMAGE}?text=Nala+Bima`,
+      file_url: "https://example.com/seed/networking/nala-bima.pdf",
       description: "Networking maba dengan Bima setelah sesi PPMB.",
       is_done: true,
     },
@@ -372,6 +374,7 @@ async function seedNetworking(users: Awaited<ReturnType<typeof seedUsers>>, seni
     },
     update: {
       img_url: `${SEED_IMAGE}?text=Bima+Nala`,
+      file_url: "https://example.com/seed/networking/bima-nala.pdf",
       description: "Networking balasan dari Bima ke Nala.",
       is_done: true,
     },
@@ -379,6 +382,7 @@ async function seedNetworking(users: Awaited<ReturnType<typeof seedUsers>>, seni
       fromId: users.bima.id,
       toId: users.nala.id,
       img_url: `${SEED_IMAGE}?text=Bima+Nala`,
+      file_url: "https://example.com/seed/networking/bima-nala.pdf",
       description: "Networking balasan dari Bima ke Nala.",
       is_done: true,
     },
@@ -393,6 +397,7 @@ async function seedNetworking(users: Awaited<ReturnType<typeof seedUsers>>, seni
     },
     update: {
       img_url: null,
+      file_url: null,
       description: null,
       is_done: false,
     },
@@ -464,12 +469,14 @@ async function seedNetworking(users: Awaited<ReturnType<typeof seedUsers>>, seni
     },
     update: {
       img_url: `${SEED_IMAGE}?text=Nala+Adrian`,
+      file_url: "https://example.com/seed/networking/nala-adrian.pdf",
       description: "Networking dengan Ko Adrian tentang adaptasi kuliah.",
     },
     create: {
       fromId: users.nala.id,
       toId: seniors.adrian.id,
       img_url: `${SEED_IMAGE}?text=Nala+Adrian`,
+      file_url: "https://example.com/seed/networking/nala-adrian.pdf",
       description: "Networking dengan Ko Adrian tentang adaptasi kuliah.",
     },
   });
@@ -483,12 +490,14 @@ async function seedNetworking(users: Awaited<ReturnType<typeof seedUsers>>, seni
     },
     update: {
       img_url: `${SEED_IMAGE}?text=Bima+Michelle`,
+      file_url: "https://example.com/seed/networking/bima-michelle.pdf",
       description: "Networking dengan Ci Michelle tentang organisasi dan akademik.",
     },
     create: {
       fromId: users.bima.id,
       toId: seniors.michelle.id,
       img_url: `${SEED_IMAGE}?text=Bima+Michelle`,
+      file_url: "https://example.com/seed/networking/bima-michelle.pdf",
       description: "Networking dengan Ci Michelle tentang organisasi dan akademik.",
     },
   });
@@ -549,12 +558,14 @@ async function seedTaskSubmissions(users: Awaited<ReturnType<typeof seedUsers>>)
   await prisma.firstFossibSessionSubmission.upsert({
     where: { userId: users.nala.id },
     update: {
-      file_url: "https://example.com/seed/fossib-1-nala.pdf",
+      file_url: "https://docs.google.com/document/d/seed-fossib-1-nala/edit",
+      photo_url: `${SEED_IMAGE}?text=Fossib+1`,
       description: "Catatan refleksi Fossib sesi pertama.",
     },
     create: {
       userId: users.nala.id,
-      file_url: "https://example.com/seed/fossib-1-nala.pdf",
+      file_url: "https://docs.google.com/document/d/seed-fossib-1-nala/edit",
+      photo_url: `${SEED_IMAGE}?text=Fossib+1`,
       description: "Catatan refleksi Fossib sesi pertama.",
     },
   });
@@ -562,12 +573,14 @@ async function seedTaskSubmissions(users: Awaited<ReturnType<typeof seedUsers>>)
   await prisma.secondFossibSessionSubmission.upsert({
     where: { userId: users.nala.id },
     update: {
-      file_url: "https://example.com/seed/fossib-2-nala.pdf",
+      file_url: "https://docs.google.com/document/d/seed-fossib-2-nala/edit",
+      photo_url: `${SEED_IMAGE}?text=Fossib+2`,
       description: "Catatan refleksi Fossib sesi kedua.",
     },
     create: {
       userId: users.nala.id,
-      file_url: "https://example.com/seed/fossib-2-nala.pdf",
+      file_url: "https://docs.google.com/document/d/seed-fossib-2-nala/edit",
+      photo_url: `${SEED_IMAGE}?text=Fossib+2`,
       description: "Catatan refleksi Fossib sesi kedua.",
     },
   });
@@ -575,11 +588,11 @@ async function seedTaskSubmissions(users: Awaited<ReturnType<typeof seedUsers>>)
   await prisma.insightHuntingSubmission.upsert({
     where: { userId: users.nala.id },
     update: {
-      file_url: "https://example.com/seed/insight-hunting-nala.pdf",
+      file_url: "https://docs.google.com/document/d/seed-insight-hunting-nala/edit",
     },
     create: {
       userId: users.nala.id,
-      file_url: "https://example.com/seed/insight-hunting-nala.pdf",
+      file_url: "https://docs.google.com/document/d/seed-insight-hunting-nala/edit",
     },
   });
 
@@ -594,29 +607,16 @@ async function seedTaskSubmissions(users: Awaited<ReturnType<typeof seedUsers>>)
     },
   });
 
-  await prisma.mentoringReflection.upsert({
-    where: { userId: users.nala.id },
-    update: {
-      file_url: "https://example.com/seed/mentoring-reflection-nala.pdf",
-      description: "Refleksi mentoring tentang target semester pertama.",
-    },
-    create: {
-      userId: users.nala.id,
-      file_url: "https://example.com/seed/mentoring-reflection-nala.pdf",
-      description: "Refleksi mentoring tentang target semester pertama.",
-    },
-  });
-
   await prisma.mentoringVlogSubmission.upsert({
     where: { userId: users.nala.id },
     update: {
-      file_url: "https://example.com/seed/mentoring-vlog-nala.mp4",
-      description: "Vlog singkat kegiatan mentoring.",
+      file_url: "https://drive.google.com/drive/folders/seed-mentoring-nala",
+      description: "Folder Google Drive berisi video dan TTS mentoring.",
     },
     create: {
       userId: users.nala.id,
-      file_url: "https://example.com/seed/mentoring-vlog-nala.mp4",
-      description: "Vlog singkat kegiatan mentoring.",
+      file_url: "https://drive.google.com/drive/folders/seed-mentoring-nala",
+      description: "Folder Google Drive berisi video dan TTS mentoring.",
     },
   });
 
@@ -778,6 +778,7 @@ async function seedContent() {
 async function seedMaterials() {
   const introCategory = await upsertMaterialCategory("PPMB Basics", 1);
   const taskCategory = await upsertMaterialCategory("Panduan Tugas", 2);
+  const committeeVideoCategory = await upsertMaterialCategory("Video Panitia", 3);
 
   const materials = [
     {
@@ -805,6 +806,24 @@ async function seedMaterials() {
       videoUrl: "https://example.com/seed/video/submit-task",
       thumbnailUrl: `${SEED_IMAGE}?text=Submit`,
       position: 1,
+      isPublished: true,
+    },
+    {
+      categoryId: committeeVideoCategory.id,
+      title: "Perkenalan Panitia PPMB 2026",
+      description: "Kenalan dengan panitia yang mendampingi rangkaian PPMB.",
+      videoUrl: "https://example.com/seed/video/panitia-perkenalan",
+      thumbnailUrl: `${SEED_IMAGE}?text=Video+Panitia`,
+      position: 1,
+      isPublished: true,
+    },
+    {
+      categoryId: committeeVideoCategory.id,
+      title: "Pesan untuk Peserta PPMB 2026",
+      description: "Pesan singkat dari panitia untuk seluruh peserta.",
+      videoUrl: "https://example.com/seed/video/panitia-pesan",
+      thumbnailUrl: `${SEED_IMAGE}?text=Pesan+Panitia`,
+      position: 2,
       isPublished: true,
     },
   ];

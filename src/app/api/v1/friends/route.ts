@@ -1,11 +1,14 @@
 import { prisma } from "@/lib/prisma";
-import serverResponse, { InvalidHeadersResponse, InvalidUserResponse } from "@/utils/serverResponse";
+import { authenticateRequest } from "@/lib/auth";
+import serverResponse, { InvalidUserResponse, unauthorizedResponse } from "@/utils/serverResponse";
 import { NextRequest } from "next/server";
 
 export async function GET(req: NextRequest) {
-  const userId = req.headers.get("X-User-Id");
-  if (!userId) {
-    return InvalidHeadersResponse;
+  let userId: number;
+  try {
+    ({ userId } = await authenticateRequest(req));
+  } catch {
+    return unauthorizedResponse();
   }
   const searchParams = req.nextUrl.searchParams;
   if (!searchParams.get("name")) {
@@ -14,7 +17,7 @@ export async function GET(req: NextRequest) {
         where: {
           id: {
             not: {
-              equals: +userId,
+              equals: userId,
             },
           },
         },
@@ -24,7 +27,7 @@ export async function GET(req: NextRequest) {
         include: {
           ConnectionReciever: {
             where: {
-              fromId: +userId,
+              fromId: userId,
             },
             select: {
               status: true,
@@ -32,7 +35,7 @@ export async function GET(req: NextRequest) {
           },
           ConnectionRequestReciever: {
             where: {
-              fromId: +userId,
+              fromId: userId,
             },
             select: {
               status: true,
@@ -40,7 +43,7 @@ export async function GET(req: NextRequest) {
           },
           ConnectionRequestSender: {
             where: {
-              toId: +userId,
+              toId: userId,
             },
             select: {
               status: true,
@@ -48,7 +51,7 @@ export async function GET(req: NextRequest) {
           },
           NetworkingTaskReciever: {
             where: {
-              fromId: +userId,
+              fromId: userId,
             },
             select: {
               is_done: true,
@@ -109,7 +112,7 @@ export async function GET(req: NextRequest) {
           {
             id: {
               not: {
-                equals: +userId,
+                equals: userId,
               },
             },
           },
@@ -126,7 +129,7 @@ export async function GET(req: NextRequest) {
       include: {
         ConnectionReciever: {
           where: {
-            fromId: +userId,
+            fromId: userId,
           },
           select: {
             status: true,
@@ -134,7 +137,7 @@ export async function GET(req: NextRequest) {
         },
         ConnectionRequestReciever: {
           where: {
-            fromId: +userId,
+            fromId: userId,
           },
           select: {
             status: true,
@@ -142,7 +145,7 @@ export async function GET(req: NextRequest) {
         },
         ConnectionRequestSender: {
           where: {
-            toId: +userId,
+            toId: userId,
           },
           select: {
             status: true,
@@ -150,7 +153,7 @@ export async function GET(req: NextRequest) {
         },
         NetworkingTaskReciever: {
           where: {
-            fromId: +userId,
+            fromId: userId,
           },
           select: {
             is_done: true,

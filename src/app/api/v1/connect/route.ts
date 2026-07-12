@@ -1,16 +1,19 @@
 import { prisma } from "@/lib/prisma";
-import serverResponse, { InvalidHeadersResponse, InvalidUserResponse } from "@/utils/serverResponse";
+import { authenticateRequest } from "@/lib/auth";
+import serverResponse, { InvalidUserResponse, unauthorizedResponse } from "@/utils/serverResponse";
 import { NextRequest } from "next/server";
 
 export async function GET(req: NextRequest) {
-  const userId = req.headers.get("X-User-Id");
-  if (!userId) {
-    return InvalidHeadersResponse;
+  let userId: number;
+  try {
+    ({ userId } = await authenticateRequest(req));
+  } catch {
+    return unauthorizedResponse();
   }
   try{
     const connections = await prisma.connection.findMany({
       where: {
-        fromId: +userId,
+        fromId: userId,
       },
       include: {
         to: {

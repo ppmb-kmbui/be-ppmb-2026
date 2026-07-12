@@ -100,6 +100,7 @@ model NetworkingTask {
   to        User           @relation(fields: [toId], references: [id], name: "to")
   toId      Int            @map("to_id")
   img_url   String?
+  file_url  String?        @map("file_url")
   description String?
   questions QuestionTask[]
   is_done   Boolean        @default(false) @map("is_done")
@@ -134,6 +135,7 @@ model NetworkingKatingTask {
   to        SeniorUser     @relation(fields: [toId], references: [id], name: "to")
   toId      Int            @map("to_id")
   img_url   String?
+  file_url  String?        @map("file_url")
   description String?
   questions QuestionKatingTask[]
 
@@ -155,6 +157,7 @@ model FirstFossibSessionSubmission {
   id                      Int                       @id @default(autoincrement())
   user                    User                      @relation(fields: [userId], references: [id])
   file_url                String?                   @map("file_url")
+  photo_url               String?                   @map("photo_url")
   description             String?
   userId                  Int                       @unique
 }
@@ -163,6 +166,7 @@ model SecondFossibSessionSubmission {
   id                       Int                        @id @default(autoincrement())
   user                     User                       @relation(fields: [userId], references: [id])
   file_url                 String?                    @map("file_url")
+  photo_url                String?                    @map("photo_url")
   description              String?
   userId                   Int                        @unique
 }
