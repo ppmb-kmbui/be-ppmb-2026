@@ -1,10 +1,14 @@
 import { authenticateRequest } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import serverResponse, { unauthorizedResponse } from "@/utils/serverResponse";
+import { isGoogleDriveResourceUrl, taskSubmissionErrorResponse } from "@/utils/taskSubmission";
 import { NextRequest } from "next/server";
 import { z } from "zod";
 
-const GdriveUrlSchema = z.string().trim().min(1, "Link Google Drive wajib diisi");
+const GdriveUrlSchema = z.string().trim().url("Link Google Drive tidak valid").refine(
+  (value) => isGoogleDriveResourceUrl(value),
+  "Link harus mengarah ke file atau folder Google Drive",
+);
 const SubmissionSchema = z.object({
   gdrive_url: GdriveUrlSchema.optional(),
   gdriveUrl: GdriveUrlSchema.optional(),
@@ -22,20 +26,28 @@ async function getUserId(req: NextRequest) {
 export async function GET(req: NextRequest) {
   const userId = await getUserId(req);
   if (!userId) return unauthorizedResponse();
-  const reflection = await prisma.mentoringReflection.findFirst({
-    where: { userId },
-  });
-  const vlog = await prisma.mentoringVlogSubmission.findFirst({
-    where: { userId },
-  });
-  const submission = vlog ?? reflection;
+  const [submission, reflection, vlog] = await Promise.all([
+    prisma.mentoringSubmission.findUnique({ where: { userId } }),
+    prisma.mentoringReflection.findUnique({ where: { userId } }),
+    prisma.mentoringVlogSubmission.findUnique({ where: { userId } }),
+  ]);
+  const serializedSubmission = submission ? {
+    id: submission.id,
+    userId: submission.userId,
+    file_url: submission.gdriveUrl,
+    gdrive_url: submission.gdriveUrl,
+    createdAt: submission.createdAt,
+    updatedAt: submission.updatedAt,
+  } : null;
+
   return serverResponse({
     success: true,
     message: "Berhasil mengambil data mentoring",
     data: {
-      submission,
-      gdrive_url: submission?.file_url ?? null,
-      // Legacy fields are kept while the frontend migrates to submission/gdrive_url.
+      submission: serializedSubmission,
+      gdrive_url: submission?.gdriveUrl ?? null,
+      // Historical reflection/vlog data is retained for audit only and does
+      // not contribute to mentoring progress anymore.
       reflection,
       vlog,
     },
@@ -49,25 +61,30 @@ export async function POST(req: NextRequest) {
 
   try {
     const raw = SubmissionSchema.parse(await req.json());
-    const file_url = raw.gdrive_url ?? raw.gdriveUrl ?? raw.file_url!;
-    const data = await prisma.mentoringVlogSubmission.upsert({
+    const gdriveUrl = raw.gdrive_url ?? raw.gdriveUrl ?? raw.file_url!;
+    const data = await prisma.mentoringSubmission.upsert({
       where: { userId },
-      update: { file_url },
-      create: { userId, file_url },
+      update: { gdriveUrl },
+      create: { userId, gdriveUrl },
     });
 
     return serverResponse({
       success: true,
       message: "Link Google Drive mentoring tersimpan",
-      data: { submission: data, gdrive_url: data.file_url },
+      data: {
+        submission: {
+          id: data.id,
+          userId: data.userId,
+          file_url: data.gdriveUrl,
+          gdrive_url: data.gdriveUrl,
+          createdAt: data.createdAt,
+          updatedAt: data.updatedAt,
+        },
+        gdrive_url: data.gdriveUrl,
+      },
       status: 200,
     });
   } catch (error) {
-    return serverResponse({
-      success: false,
-      message: "Operasi gagal",
-      error: error instanceof z.ZodError ? error.errors : "Body tidak valid",
-      status: 400,
-    });
+    return taskSubmissionErrorResponse(error);
   }
 }

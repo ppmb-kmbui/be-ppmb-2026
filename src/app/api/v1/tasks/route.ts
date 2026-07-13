@@ -1,11 +1,25 @@
-import { CLUSTERS, NETWORKING_BATCHES, SENIOR_BATCHES } from "@/lib/const";
 import { authenticateRequest } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import serverResponse, { unauthorizedResponse } from "@/utils/serverResponse";
+import {
+  googleDocsResourceId,
+  isGoogleDriveResourceUrl,
+  isImageUrl,
+  isPdfUrl,
+  urlResourceKey,
+} from "@/utils/taskSubmission";
 import { NextRequest } from "next/server";
 
 const percentage = (completed: number, required: number) =>
   required === 0 ? 0 : Math.min(100, Math.round((completed / required) * 100));
+
+const hasValue = (value: string | null | undefined) =>
+  typeof value === "string" && value.trim().length > 0;
+
+// Temporary response keys for the current frontend. They no longer control
+// task requirements and can be removed after the frontend adopts the new API.
+const LEGACY_NETWORKING_BATCHES = [2026, 2025, 2024, 2023] as const;
+const LEGACY_SENIOR_BATCHES = [2025, 2024, 2023] as const;
 
 export async function GET(req: NextRequest) {
   let userId: number;
@@ -15,77 +29,81 @@ export async function GET(req: NextRequest) {
     return unauthorizedResponse();
   }
 
-  const [networkingAngkatan, networkingKating, fossib1, fossib2, insightHunting, mentoringVlog, mentoringReflection, explorer] = await Promise.all([
-    prisma.networkingTask.findMany({
-      where: { is_done: true, fromId: userId },
-      select: { to: { select: { faculty: true, batch: true } } },
-    }),
-    prisma.networkingKatingTask.findMany({
-      where: {
-        fromId: userId,
-        OR: [{ file_url: { not: null } }, { img_url: { not: null } }],
-      },
-      select: { to: { select: { batch: true } } },
-    }),
-    prisma.firstFossibSessionSubmission.findUnique({ where: { userId } }),
-    prisma.secondFossibSessionSubmission.findUnique({ where: { userId } }),
+  const [
+    networking,
+    fossib,
+    insightHunting,
+    mentoring,
+    legacyMentoringVlog,
+    legacyMentoringReflection,
+    explorer,
+  ] = await Promise.all([
+    prisma.networkingSubmission.findUnique({ where: { userId } }),
+    prisma.fossibSubmission.findUnique({ where: { userId } }),
     prisma.insightHuntingSubmission.findUnique({ where: { userId } }),
+    prisma.mentoringSubmission.findUnique({ where: { userId } }),
+    // Kept for legacy visibility only. Neither legacy model contributes to progress.
     prisma.mentoringVlogSubmission.findUnique({ where: { userId } }),
     prisma.mentoringReflection.findUnique({ where: { userId } }),
     prisma.explorerSubmission.findUnique({ where: { userId } }),
   ]);
 
+  const firstDocumentId = googleDocsResourceId(networking?.firstDocsUrl);
+  const secondDocumentId = googleDocsResourceId(networking?.secondDocsUrl);
+  const networkingCompleted = Number(firstDocumentId !== null) + Number(
+    secondDocumentId !== null && secondDocumentId !== firstDocumentId,
+  );
+  const explorerCompleted = Number(
+    hasValue(explorer?.activityName) && isImageUrl(explorer?.img_url ?? ""),
+  );
+  const mentoringCompleted = Number(isGoogleDriveResourceUrl(mentoring?.gdriveUrl));
+  const fossibCompleted = Number(
+    isPdfUrl(fossib?.fileUrl ?? "") &&
+    isImageUrl(fossib?.photoUrl ?? "") &&
+    urlResourceKey(fossib?.fileUrl ?? "") !== urlResourceKey(fossib?.photoUrl ?? ""),
+  );
+  const insightCompleted = Number(isPdfUrl(insightHunting?.file_url ?? ""));
+
+  // These compatibility objects are still read by the current frontend. They no
+  // longer represent the deleted per-batch networking quota model.
   const facultyProgress = {
-    SAINTEK: { progress: 0, min: 3 },
-    SOSHUM: { progress: 0, min: 3 },
-    RIK_VOK: { progress: 0, min: 3 },
-    OTHER: { progress: 0, min: 1 },
+    SAINTEK: { progress: 0, min: 0 },
+    SOSHUM: { progress: 0, min: 0 },
+    RIK_VOK: { progress: 0, min: 0 },
+    OTHER: { progress: 0, min: 0 },
   };
   const progressByBatch: Record<string, { progress: number; min: number }> = Object.fromEntries(
-    NETWORKING_BATCHES.map((batch) => [String(batch), { progress: 0, min: batch === NETWORKING_BATCHES[0] ? 10 : 0 }]),
+    LEGACY_NETWORKING_BATCHES.map((batch, index) => [
+      String(batch),
+      { progress: index === 0 ? networkingCompleted : 0, min: index === 0 ? 2 : 0 },
+    ]),
   );
-
-  for (const task of networkingAngkatan) {
-    const faculty = task.to.faculty?.toUpperCase();
-    if (faculty && CLUSTERS.SAINTEK.includes(faculty)) facultyProgress.SAINTEK.progress++;
-    else if (faculty && CLUSTERS.SOSHUM.includes(faculty)) facultyProgress.SOSHUM.progress++;
-    else if (faculty && CLUSTERS.RIK_VOK.includes(faculty)) facultyProgress.RIK_VOK.progress++;
-    else facultyProgress.OTHER.progress++;
-    const batch = String(task.to.batch);
-    if (progressByBatch[batch]) progressByBatch[batch].progress++;
-  }
-
   const seniorProgress: Record<string, { progress: number; min: number }> = Object.fromEntries(
-    SENIOR_BATCHES.map((batch, index) => [String(batch), { progress: 0, min: index === 0 ? 4 : 3 }]),
+    LEGACY_SENIOR_BATCHES.map((batch) => [String(batch), { progress: 0, min: 0 }]),
   );
-  for (const task of networkingKating) {
-    const batch = String(task.to.batch);
-    if (seniorProgress[batch]) seniorProgress[batch].progress++;
-  }
-
-  const networkingCompleted = networkingAngkatan.length + networkingKating.length;
-  const mentoringSubmission = mentoringVlog ?? mentoringReflection;
-  const mentoringCompleted = Number(!!mentoringSubmission);
-  const fossibCompleted = Number(!!fossib1) + Number(!!fossib2) + Number(!!insightHunting);
 
   return serverResponse({
     success: true,
     message: "Berhasil mendapatkan tasks user",
     data: {
-      networkingAngkatan: { progress: facultyProgress, byBatch: progressByBatch, min: 10 },
-      networkingKating: { progress: seniorProgress, min: 10 },
-      kmbuiExplorerDone: !!explorer,
-      firstFossibDone: !!fossib1,
-      secondFossibDone: !!fossib2,
-      insightHuntingDone: !!insightHunting,
-      mentoringDone: !!mentoringSubmission,
-      mentoringVlogDone: !!mentoringVlog,
-      mentoringReflectionDone: !!mentoringReflection,
+      networkingSubmission: networking,
+      networkingAngkatan: { progress: facultyProgress, byBatch: progressByBatch, min: 2 },
+      networkingKating: { progress: seniorProgress, min: 0 },
+      kmbuiExplorerDone: explorerCompleted === 1,
+      firstFossibDone: fossibCompleted === 1,
+      secondFossibDone: fossibCompleted === 1,
+      fossibDone: fossibCompleted === 1,
+      insightHuntingDone: insightCompleted === 1,
+      mentoringSubmission: mentoring,
+      mentoringDone: mentoringCompleted === 1,
+      mentoringVlogDone: !!legacyMentoringVlog,
+      mentoringReflectionDone: !!legacyMentoringReflection,
       cards: {
-        networking: { completed: networkingCompleted, required: 20, percentage: percentage(networkingCompleted, 20) },
-        explorer: { completed: Number(!!explorer), required: 1, percentage: percentage(Number(!!explorer), 1) },
+        networking: { completed: networkingCompleted, required: 2, percentage: percentage(networkingCompleted, 2) },
+        explorer: { completed: explorerCompleted, required: 1, percentage: percentage(explorerCompleted, 1) },
         mentoring: { completed: mentoringCompleted, required: 1, percentage: percentage(mentoringCompleted, 1) },
-        fosterSiblings: { completed: fossibCompleted, required: 3, percentage: percentage(fossibCompleted, 3) },
+        fosterSiblings: { completed: fossibCompleted, required: 1, percentage: percentage(fossibCompleted, 1) },
+        insightHunting: { completed: insightCompleted, required: 1, percentage: percentage(insightCompleted, 1) },
       },
     },
     status: 200,

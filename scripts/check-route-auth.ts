@@ -10,19 +10,15 @@ import * as connect from "../src/app/api/v1/connect/route";
 import * as connectById from "../src/app/api/v1/connect/[id]/route";
 import * as connectionRequests from "../src/app/api/v1/connection-requests/route";
 import * as friends from "../src/app/api/v1/friends/route";
-import * as networkingKating from "../src/app/api/v1/networking-kating/route";
-import * as networkingKatingById from "../src/app/api/v1/networking-kating/[id]/route";
-import * as networkingMaba from "../src/app/api/v1/networking-maba/route";
-import * as networkingMabaById from "../src/app/api/v1/networking-maba/[id]/route";
+import * as materials from "../src/app/api/v1/materials/route";
 import * as profile from "../src/app/api/v1/profile/route";
 import * as quotes from "../src/app/api/v1/quotes/route";
 import * as explorer from "../src/app/api/v1/tasks/explorer/route";
-import * as firstFossib from "../src/app/api/v1/tasks/fossib/first/route";
-import * as secondFossib from "../src/app/api/v1/tasks/fossib/second/route";
+import * as fossib from "../src/app/api/v1/tasks/fossib/route";
 import * as insightHunting from "../src/app/api/v1/tasks/insight-hunting/route";
 import * as mentoring from "../src/app/api/v1/tasks/mentoring/route";
-import * as mentoringLegacy from "../src/app/api/v1/tasks/mentoring/[id]/route";
 import * as mentoringVideos from "../src/app/api/v1/tasks/mentoring/videos/route";
+import * as networking from "../src/app/api/v1/tasks/networking/route";
 import * as tasks from "../src/app/api/v1/tasks/route";
 
 type Check = {
@@ -45,26 +41,20 @@ const checks: Check[] = [
   { name: "connect/:id DELETE", run: () => connectById.DELETE(request("/api/v1/connect/1", "DELETE"), params) },
   { name: "connection-requests GET", run: () => connectionRequests.GET(request("/api/v1/connection-requests")) },
   { name: "friends GET", run: () => friends.GET(request("/api/v1/friends")) },
+  { name: "materials GET", run: () => materials.GET(request("/api/v1/materials")) },
+  { name: "quotes GET", run: () => quotes.GET(request("/api/v1/quotes")) },
   { name: "quotes POST", run: () => quotes.POST(request("/api/v1/quotes", "POST")) },
-  { name: "networking-maba GET", run: () => networkingMaba.GET(request("/api/v1/networking-maba")) },
-  { name: "networking-maba/:id GET", run: () => networkingMabaById.GET(request("/api/v1/networking-maba/1"), params) },
-  { name: "networking-maba/:id POST", run: () => networkingMabaById.POST(request("/api/v1/networking-maba/1", "POST"), params) },
-  { name: "networking-maba/:id PUT", run: () => networkingMabaById.PUT(request("/api/v1/networking-maba/1", "PUT"), params) },
-  { name: "networking-kating GET", run: () => networkingKating.GET(request("/api/v1/networking-kating")) },
-  { name: "networking-kating/:id GET", run: () => networkingKatingById.GET(request("/api/v1/networking-kating/1"), params) },
-  { name: "networking-kating/:id POST", run: () => networkingKatingById.POST(request("/api/v1/networking-kating/1", "POST"), params) },
   { name: "tasks GET", run: () => tasks.GET(request("/api/v1/tasks")) },
+  { name: "tasks/networking GET", run: () => networking.GET(request("/api/v1/tasks/networking")) },
+  { name: "tasks/networking POST", run: () => networking.POST(request("/api/v1/tasks/networking", "POST")) },
   { name: "explorer GET", run: () => explorer.GET(request("/api/v1/tasks/explorer")) },
   { name: "explorer POST", run: () => explorer.POST(request("/api/v1/tasks/explorer", "POST")) },
-  { name: "fossib/first GET", run: () => firstFossib.GET(request("/api/v1/tasks/fossib/first")) },
-  { name: "fossib/first POST", run: () => firstFossib.POST(request("/api/v1/tasks/fossib/first", "POST")) },
-  { name: "fossib/second GET", run: () => secondFossib.GET(request("/api/v1/tasks/fossib/second")) },
-  { name: "fossib/second POST", run: () => secondFossib.POST(request("/api/v1/tasks/fossib/second", "POST")) },
+  { name: "fossib GET", run: () => fossib.GET(request("/api/v1/tasks/fossib")) },
+  { name: "fossib POST", run: () => fossib.POST(request("/api/v1/tasks/fossib", "POST")) },
   { name: "insight-hunting GET", run: () => insightHunting.GET(request("/api/v1/tasks/insight-hunting")) },
   { name: "insight-hunting POST", run: () => insightHunting.POST(request("/api/v1/tasks/insight-hunting", "POST")) },
   { name: "mentoring GET", run: () => mentoring.GET(request("/api/v1/tasks/mentoring")) },
   { name: "mentoring POST", run: () => mentoring.POST(request("/api/v1/tasks/mentoring", "POST")) },
-  { name: "mentoring legacy POST", run: () => mentoringLegacy.POST(request("/api/v1/tasks/mentoring/vlog", "POST"), { params: Promise.resolve({ id: "vlog" }) }) },
   { name: "mentoring/videos GET", run: () => mentoringVideos.GET(request("/api/v1/tasks/mentoring/videos")) },
   { name: "admin/users GET", run: () => adminUsers.GET(request("/api/v1/admin/users")) },
   { name: "admin/tasks/:id GET", run: () => adminTasks.GET(request("/api/v1/admin/tasks/1"), params) },
