@@ -1,7 +1,12 @@
 import { prisma } from "@/lib/prisma";
 import { authenticateRequest } from "@/lib/auth";
 import { NextRequest } from "next/server";
-import { unauthorizedResponse } from "@/utils/serverResponse";
+import serverResponse, { unauthorizedResponse } from "@/utils/serverResponse";
+import { z } from "zod";
+
+const QuoteSchema = z.object({
+  quote: z.string().trim().min(1, "Quote wajib diisi"),
+});
 
 export async function POST(req: NextRequest) {
   let userId: number;
@@ -10,10 +15,18 @@ export async function POST(req: NextRequest) {
   } catch {
     return unauthorizedResponse();
   }
-  const body = await req.json();
-  if (!body) {
-    return new Response("Bad Request", { status: 400 });
+  let body: z.infer<typeof QuoteSchema>;
+  try {
+    body = QuoteSchema.parse(await req.json());
+  } catch (error) {
+    return serverResponse({
+      success: false,
+      message: "Validasi gagal",
+      error: error instanceof z.ZodError ? error.errors : "Body JSON tidak valid",
+      status: 400,
+    });
   }
+
   const quote = await prisma.quotes.create({
     data: {
       quote: body.quote,
@@ -27,13 +40,21 @@ export async function POST(req: NextRequest) {
       },
     },
   });
-  return new Response(JSON.stringify(quote), {
+  return serverResponse({
+    success: true,
+    message: "Quote berhasil dibuat",
+    data: quote,
     status: 201,
-    headers: { "Content-Type": "application/json" },
   });
 }
 
 export async function GET(req: NextRequest) {
+  try {
+    await authenticateRequest(req);
+  } catch {
+    return unauthorizedResponse();
+  }
+
   const quotes = await prisma.quotes.findMany({
     include: {
       user: {
@@ -43,9 +64,21 @@ export async function GET(req: NextRequest) {
       },
     },
   });
+
+  if (quotes.length === 0) {
+    return serverResponse({
+      success: true,
+      message: "Belum ada quote",
+      data: null,
+      status: 200,
+    });
+  }
+
   const randomNum = Math.floor(Math.random() * quotes.length);
-  return new Response(JSON.stringify(quotes[randomNum]), {
+  return serverResponse({
+    success: true,
+    message: "Quote berhasil didapatkan",
+    data: quotes[randomNum],
     status: 200,
-    headers: { "Content-Type": "application/json" },
   });
 }

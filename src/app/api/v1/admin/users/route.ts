@@ -1,6 +1,13 @@
 import { authenticateRequest } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import serverResponse, { forbiddenResponse, unauthorizedResponse } from "@/utils/serverResponse";
+import {
+  googleDocsResourceId,
+  isGoogleDriveResourceUrl,
+  isImageUrl,
+  isPdfUrl,
+  urlResourceKey,
+} from "@/utils/taskSubmission";
 import { NextRequest } from "next/server";
 
 export async function GET(req: NextRequest) {
@@ -28,35 +35,61 @@ export async function GET(req: NextRequest) {
       orderBy: { fullname: "asc" },
       select: {
         id: true, fullname: true, email: true, imgUrl: true, faculty: true, batch: true,
-        _count: {
-          select: {
-            NetworkingTaskSender: { where: { is_done: true } },
-            NetworkingKatingTaskSender: {
-              where: {
-                OR: [
-                  { file_url: { not: null } },
-                  { img_url: { not: null } },
-                ],
-              },
-            },
-            ExplorerSubmission: true,
-            MentoringVlogSubmission: true,
-            MentoringReflection: true,
-            FirstFossibSessionSubmission: true,
-            SecondFossibSessionSubmission: true,
-            InsightHuntingSubmission: true,
-          },
+        NetworkingSubmission: {
+          select: { firstDocsUrl: true, secondDocsUrl: true },
+        },
+        ExplorerSubmission: {
+          select: { activityName: true, img_url: true },
+        },
+        MentoringSubmission: {
+          select: { gdriveUrl: true },
+        },
+        FossibSubmission: {
+          select: { fileUrl: true, photoUrl: true },
+        },
+        InsightHuntingSubmission: {
+          select: { file_url: true },
         },
       },
     }),
   ]);
 
-  const data = users.map(({ _count, ...user }) => {
-    const completed = Math.min(20, _count.NetworkingTaskSender + _count.NetworkingKatingTaskSender) +
-      Math.min(1, _count.ExplorerSubmission) +
-      Math.min(1, _count.MentoringVlogSubmission + _count.MentoringReflection) +
-      Math.min(3, _count.FirstFossibSessionSubmission + _count.SecondFossibSessionSubmission + _count.InsightHuntingSubmission);
-    return { ...user, progress: { completed, required: 25, percentage: Math.round((completed / 25) * 100) } };
+  const hasValue = (value: string | null | undefined) =>
+    typeof value === "string" && value.trim().length > 0;
+
+  const data = users.map(({
+    NetworkingSubmission,
+    ExplorerSubmission,
+    MentoringSubmission,
+    FossibSubmission,
+    InsightHuntingSubmission,
+    ...user
+  }) => {
+    const firstDocumentId = googleDocsResourceId(NetworkingSubmission?.firstDocsUrl);
+    const secondDocumentId = googleDocsResourceId(NetworkingSubmission?.secondDocsUrl);
+    const networkingCompleted = Number(firstDocumentId !== null) + Number(
+      secondDocumentId !== null && secondDocumentId !== firstDocumentId,
+    );
+    const explorerCompleted = Number(ExplorerSubmission.some(
+      (submission) => hasValue(submission.activityName) && isImageUrl(submission.img_url),
+    ));
+    const mentoringCompleted = Number(isGoogleDriveResourceUrl(MentoringSubmission?.gdriveUrl));
+    const fossibCompleted = Number(
+      isPdfUrl(FossibSubmission?.fileUrl ?? "") &&
+      isImageUrl(FossibSubmission?.photoUrl ?? "") &&
+      urlResourceKey(FossibSubmission?.fileUrl ?? "") !==
+        urlResourceKey(FossibSubmission?.photoUrl ?? ""),
+    );
+    const insightCompleted = Number(InsightHuntingSubmission.some(
+      (submission) => isPdfUrl(submission.file_url),
+    ));
+    const completed = networkingCompleted + explorerCompleted + mentoringCompleted +
+      fossibCompleted + insightCompleted;
+
+    return {
+      ...user,
+      progress: { completed, required: 6, percentage: Math.round((completed / 6) * 100) },
+    };
   });
 
   return serverResponse({

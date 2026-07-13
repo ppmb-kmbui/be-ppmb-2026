@@ -4,6 +4,7 @@ import { prisma } from "@/lib/prisma";
 import { Prisma } from "@/generated/prisma/client";
 import { z, ZodError} from "zod";
 import serverResponse from "@/utils/serverResponse";
+import { isImageUrl } from "@/utils/taskSubmission";
 import { ValidationError } from "@/types/api-type";
 
 const UserSchema = z.object({
@@ -13,7 +14,10 @@ const UserSchema = z.object({
   email: z.string().trim().email("Tolong masukan email yang sesuai").transform((value) => value.toLowerCase()),
   password: z.string().min(8, "Password minimal 8 karakter"),
   confirmPassword: z.string().min(8, "Konfirmasi password minimal 8 karakter"),
-  imgUrl: z.string().trim().min(1).optional().nullable(),
+  imgUrl: z.string().trim().url("URL foto profil tidak valid").refine(
+    (value) => isImageUrl(value),
+    "Foto profil harus berupa URL gambar HTTPS",
+  ),
   faculty: z.string().trim().min(2, "Fakultas wajib diisi"),
   batch: z.coerce.number().int().min(2020).max(2100),
 }).refine((data) => data.password === data.confirmPassword, {
@@ -65,10 +69,11 @@ export async function POST(req: NextRequest) {
       }
     }
 
+    console.error("Registrasi user gagal", error);
     return serverResponse({
       success: false,
       message: "Terjadi kesalahan internal",
-      error: error instanceof Error ? error.message : "Unknown error",
+      error: "INTERNAL_SERVER_ERROR",
       status: 500,
     });
   }
@@ -87,6 +92,16 @@ export async function POST(req: NextRequest) {
  *         application/json:
  *           schema:
  *             type: object
+ *             required:
+ *               - fullname
+ *               - lineId
+ *               - whatsappNumber
+ *               - email
+ *               - password
+ *               - confirmPassword
+ *               - imgUrl
+ *               - faculty
+ *               - batch
  *             properties:
  *               fullname:
  *                 type: string
@@ -211,7 +226,7 @@ export async function POST(req: NextRequest) {
  *                   example: Terjadi kesalahan internal
  *                 error:
  *                   type: string
- *                   example: Unknown error
+ *                   example: INTERNAL_SERVER_ERROR
  *                 status:
  *                   type: integer
  *                   example: 500

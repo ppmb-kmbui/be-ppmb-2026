@@ -1,10 +1,22 @@
-import { CLUSTERS, SENIOR_BATCHES } from "@/lib/const";
 import { authenticateRequest } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import serverResponse, { forbiddenResponse, unauthorizedResponse } from "@/utils/serverResponse";
+import {
+  googleDocsResourceId,
+  isGoogleDriveResourceUrl,
+  isImageUrl,
+  isPdfUrl,
+  urlResourceKey,
+} from "@/utils/taskSubmission";
 import { NextRequest } from "next/server";
 
 export const maxDuration = 60;
+
+const hasValue = (value: string | null | undefined) =>
+  typeof value === "string" && value.trim().length > 0;
+
+const percentage = (completed: number, required: number) =>
+  required === 0 ? 0 : Math.min(100, Math.round((completed / required) * 100));
 
 export async function GET(req: NextRequest, props: { params: Promise<{ id: string }> }) {
   try {
@@ -20,50 +32,61 @@ export async function GET(req: NextRequest, props: { params: Promise<{ id: strin
     return serverResponse({ success: false, message: "Bad Request", error: "User ID tidak valid", status: 400 });
   }
 
-  const [user, networkingAngkatan, networkingKating, fossib1, fossib2, insightHunting, mentoringReflection, mentoringVlog, explorer] = await Promise.all([
+  const [
+    user,
+    networking,
+    fossib,
+    insightHunting,
+    mentoring,
+    explorer,
+    legacyMentoringVlog,
+    legacyMentoringReflection,
+    legacyFirstFossib,
+    legacySecondFossib,
+  ] = await Promise.all([
     prisma.user.findUnique({
       where: { id: userId },
       select: { id: true, fullname: true, email: true, imgUrl: true, faculty: true, batch: true, lineId: true, whatsappNumber: true },
     }),
-    prisma.networkingTask.findMany({
-      where: { fromId: userId },
-      include: {
-        to: { select: { id: true, fullname: true, batch: true, faculty: true, imgUrl: true } },
-        questions: { include: { question: true } },
-      },
-    }),
-    prisma.networkingKatingTask.findMany({
-      where: { fromId: userId },
-      include: { to: true, questions: { include: { question: true } } },
-    }),
+    prisma.networkingSubmission.findUnique({ where: { userId } }),
+    prisma.fossibSubmission.findUnique({ where: { userId } }),
+    prisma.insightHuntingSubmission.findUnique({ where: { userId } }),
+    prisma.mentoringSubmission.findUnique({ where: { userId } }),
+    prisma.explorerSubmission.findUnique({ where: { userId } }),
+    prisma.mentoringVlogSubmission.findUnique({ where: { userId } }),
+    prisma.mentoringReflection.findUnique({ where: { userId } }),
     prisma.firstFossibSessionSubmission.findUnique({ where: { userId } }),
     prisma.secondFossibSessionSubmission.findUnique({ where: { userId } }),
-    prisma.insightHuntingSubmission.findUnique({ where: { userId } }),
-    prisma.mentoringReflection.findUnique({ where: { userId } }),
-    prisma.mentoringVlogSubmission.findUnique({ where: { userId } }),
-    prisma.explorerSubmission.findUnique({ where: { userId } }),
   ]);
 
   if (!user) {
     return serverResponse({ success: false, message: "User tidak ditemukan", error: "USER_NOT_FOUND", status: 404 });
   }
 
-  const facultyProgress = { SAINTEK: 0, SOSHUM: 0, RIK_VOK: 0, OTHER: 0 };
-  for (const task of networkingAngkatan.filter((item) => item.is_done)) {
-    const faculty = task.to.faculty?.toUpperCase();
-    if (faculty && CLUSTERS.SAINTEK.includes(faculty)) facultyProgress.SAINTEK++;
-    else if (faculty && CLUSTERS.SOSHUM.includes(faculty)) facultyProgress.SOSHUM++;
-    else if (faculty && CLUSTERS.RIK_VOK.includes(faculty)) facultyProgress.RIK_VOK++;
-    else facultyProgress.OTHER++;
-  }
-  const completedNetworkingKating = networkingKating.filter((item) => item.file_url || item.img_url);
-  const seniorProgress = Object.fromEntries(SENIOR_BATCHES.map((batch) => [batch, completedNetworkingKating.filter((item) => item.to.batch === batch).length]));
-  const mentoringSubmission = mentoringVlog ?? mentoringReflection;
+  const firstDocumentId = googleDocsResourceId(networking?.firstDocsUrl);
+  const secondDocumentId = googleDocsResourceId(networking?.secondDocsUrl);
+  const networkingCompleted = Number(firstDocumentId !== null) + Number(
+    secondDocumentId !== null && secondDocumentId !== firstDocumentId,
+  );
+  const explorerCompleted = Number(
+    hasValue(explorer?.activityName) && isImageUrl(explorer?.img_url ?? ""),
+  );
+  const mentoringCompleted = Number(isGoogleDriveResourceUrl(mentoring?.gdriveUrl));
+  const fossibCompleted = Number(
+    isPdfUrl(fossib?.fileUrl ?? "") &&
+    isImageUrl(fossib?.photoUrl ?? "") &&
+    urlResourceKey(fossib?.fileUrl ?? "") !== urlResourceKey(fossib?.photoUrl ?? ""),
+  );
+  const insightCompleted = Number(isPdfUrl(insightHunting?.file_url ?? ""));
+  const completed = networkingCompleted + explorerCompleted + mentoringCompleted +
+    fossibCompleted + insightCompleted;
+
   const status = {
-    networking: networkingAngkatan.some((item) => item.is_done) || completedNetworkingKating.length > 0,
-    explorer: !!explorer,
-    mentoring: !!mentoringSubmission,
-    fosterSiblings: !!fossib1 || !!fossib2 || !!insightHunting,
+    networking: networkingCompleted === 2,
+    explorer: explorerCompleted === 1,
+    mentoring: mentoringCompleted === 1,
+    fosterSiblings: fossibCompleted === 1,
+    insightHunting: insightCompleted === 1,
   };
 
   return serverResponse({
@@ -72,12 +95,50 @@ export async function GET(req: NextRequest, props: { params: Promise<{ id: strin
     data: {
       user,
       status,
-      progress: { faculty: facultyProgress, senior: seniorProgress },
+      progress: {
+        networking: {
+          completed: networkingCompleted,
+          required: 2,
+          percentage: percentage(networkingCompleted, 2),
+        },
+        explorer: {
+          completed: explorerCompleted,
+          required: 1,
+          percentage: percentage(explorerCompleted, 1),
+        },
+        mentoring: {
+          completed: mentoringCompleted,
+          required: 1,
+          percentage: percentage(mentoringCompleted, 1),
+        },
+        fossib: {
+          completed: fossibCompleted,
+          required: 1,
+          percentage: percentage(fossibCompleted, 1),
+        },
+        insightHunting: {
+          completed: insightCompleted,
+          required: 1,
+          percentage: percentage(insightCompleted, 1),
+        },
+        overall: { completed, required: 6, percentage: percentage(completed, 6) },
+        // Compatibility keys retained for clients that still deserialize them.
+        faculty: { SAINTEK: 0, SOSHUM: 0, RIK_VOK: 0, OTHER: 0 },
+        senior: { "2025": 0, "2024": 0, "2023": 0 },
+      },
       submissions: {
-        networking: { peers: networkingAngkatan, seniors: networkingKating },
+        networking,
         explorer,
-        mentoring: { vlog: mentoringVlog, reflection: mentoringReflection, submission: mentoringSubmission },
-        fosterSiblings: { first: fossib1, second: fossib2, insightHunting },
+        mentoring: { submission: mentoring, gdrive_url: mentoring?.gdriveUrl ?? null },
+        fossib,
+        insightHunting,
+        fosterSiblings: { submission: fossib, insightHunting },
+        legacy: {
+          mentoringVlog: legacyMentoringVlog,
+          mentoringReflection: legacyMentoringReflection,
+          firstFossibSession: legacyFirstFossib,
+          secondFossibSession: legacySecondFossib,
+        },
       },
     },
     status: 200,

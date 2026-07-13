@@ -1,7 +1,15 @@
+import { authenticateRequest } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
-import serverResponse from "@/utils/serverResponse";
+import serverResponse, { unauthorizedResponse } from "@/utils/serverResponse";
+import { NextRequest } from "next/server";
 
-export async function GET() {
+export async function GET(req: NextRequest) {
+  try {
+    await authenticateRequest(req);
+  } catch {
+    return unauthorizedResponse();
+  }
+
   const categories = await prisma.materialCategory.findMany({
     orderBy: { position: "asc" },
     include: {

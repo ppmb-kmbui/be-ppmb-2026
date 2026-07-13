@@ -20,9 +20,9 @@ model User {
   batch                         Int                             @default(2026)
   lineId                        String?                         @map("line_id")
   whatsappNumber                String?                         @map("whatsapp_number")
-  NetworkingTaskSender          NetworkingTask[]                @relation("from")
-  NetworkingTaskReciever        NetworkingTask[]                @relation("to")
-  NetworkingKatingTaskSender    NetworkingKatingTask[]          @relation("from")
+  NetworkingSubmission          NetworkingSubmission?
+  FossibSubmission              FossibSubmission?
+  MentoringSubmission           MentoringSubmission?
   ConnectionRequestSender       ConnectionRequest[]             @relation("from")
   ConnectionRequestReciever     ConnectionRequest[]             @relation("to")
   ConnectionSender              Connection[]                    @relation("from")
@@ -37,15 +37,6 @@ model User {
   @@map("users")
 }
 
-model SeniorUser {
-  id                            Int                             @id @default(autoincrement())
-  fullname                      String?
-  batch                         Int
-  NetworkingKatingTaskReceiver  NetworkingKatingTask[]          @relation("to")
-  
-  @@map("senior_users")
-}
-
 model Connection {
   id         Int      @id @default(autoincrement())
   from       User     @relation(fields: [fromId], references: [id], name: "from")
@@ -56,6 +47,7 @@ model Connection {
   created_at DateTime @default(now())
   updated_at DateTime @default(now()) @updatedAt
 
+  @@unique([fromId, toId])
   @@map("connections")
 }
 
@@ -69,77 +61,20 @@ model ConnectionRequest {
   created_at DateTime @default(now())
   updated_at DateTime @default(now()) @updatedAt
 
+  @@unique([fromId, toId])
   @@map("connection_requests")
 }
 
-model Question {
-  id           Int            @id @default(autoincrement())
-  question     String
-  created_at   DateTime       @default(now())
-  updated_at   DateTime       @default(now()) @updatedAt
-  group_id     Int            @default(1)
-  tasks        QuestionTask[]
+model NetworkingSubmission {
+  id            Int      @id @default(autoincrement())
+  user          User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  userId        Int      @unique @map("user_id")
+  firstDocsUrl  String?  @map("first_docs_url")
+  secondDocsUrl String?  @map("second_docs_url")
+  createdAt     DateTime @default(now()) @map("created_at")
+  updatedAt     DateTime @default(now()) @updatedAt @map("updated_at")
 
-  @@map("questions")
-}
-
-model QuestionTask {
-  question   Question       @relation(fields: [questionId], references: [id])
-  questionId Int            @map("question_id")
-  task       NetworkingTask @relation(fields: [fromId, toId], references: [fromId, toId])
-  fromId     Int            @map("from_id")
-  toId       Int            @map("to_id")
-  answer     String?
-
-  @@id([questionId, fromId, toId])
-}
-
-model NetworkingTask {
-  from      User           @relation(fields: [fromId], references: [id], name: "from")
-  fromId    Int            @map("from_id")
-  to        User           @relation(fields: [toId], references: [id], name: "to")
-  toId      Int            @map("to_id")
-  img_url   String?
-  file_url  String?        @map("file_url")
-  description String?
-  questions QuestionTask[]
-  is_done   Boolean        @default(false) @map("is_done")
-  @@id([fromId, toId])
-}
-
-model QuestionKating{
-  id           Int            @id @default(autoincrement())
-  question     String
-  created_at   DateTime       @default(now())
-  updated_at   DateTime       @default(now()) @updatedAt
-  group_id     Int            @default(1)
-  tasks        QuestionKatingTask[]
-
-  @@map("questions_kating")
-}
-
-model QuestionKatingTask {
-  question   QuestionKating       @relation(fields: [questionId], references: [id])
-  questionId Int            @map("question_id")
-  task       NetworkingKatingTask @relation(fields: [fromId, toId], references: [fromId, toId])
-  fromId     Int            @map("from_id")
-  toId       Int            @map("to_id")
-  answer     String?
-
-  @@id([questionId, fromId, toId])
-}
-
-model NetworkingKatingTask {
-  from      User           @relation(fields: [fromId], references: [id], name: "from")
-  fromId    Int            @map("from_id")
-  to        SeniorUser     @relation(fields: [toId], references: [id], name: "to")
-  toId      Int            @map("to_id")
-  img_url   String?
-  file_url  String?        @map("file_url")
-  description String?
-  questions QuestionKatingTask[]
-
-  @@id([fromId, toId])
+  @@map("networking_submissions")
 }
 
 model Quotes {
@@ -181,8 +116,32 @@ model InsightHuntingSubmission {
 model ExplorerSubmission {
   id                      Int                       @id @default(autoincrement())
   user                    User                      @relation(fields: [userId], references: [id])
+  activityName            String?                   @map("activity_name")
   img_url                 String                    @map("img_url")
   userId                  Int                       @unique
+}
+
+model FossibSubmission {
+  id        Int      @id @default(autoincrement())
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  userId    Int      @unique @map("user_id")
+  fileUrl   String   @map("file_url")
+  photoUrl  String   @map("photo_url")
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @default(now()) @updatedAt @map("updated_at")
+
+  @@map("fossib_submissions")
+}
+
+model MentoringSubmission {
+  id        Int      @id @default(autoincrement())
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  userId    Int      @unique @map("user_id")
+  gdriveUrl String   @map("gdrive_url")
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @default(now()) @updatedAt @map("updated_at")
+
+  @@map("mentoring_submissions")
 }
 
 model MentoringReflection {

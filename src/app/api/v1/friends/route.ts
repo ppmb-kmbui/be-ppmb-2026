@@ -49,14 +49,6 @@ export async function GET(req: NextRequest) {
               status: true,
             },
           },
-          NetworkingTaskReciever: {
-            where: {
-              fromId: userId,
-            },
-            select: {
-              is_done: true,
-            },
-          },
         },
       });
 
@@ -66,16 +58,11 @@ export async function GET(req: NextRequest) {
               ConnectionReciever,
               ConnectionRequestReciever,
               ConnectionRequestSender,
-              NetworkingTaskReciever,
               createdAt,
               ...rest
             }) => {
               let status = "not_connected";
-              if (NetworkingTaskReciever.length) {
-                status = NetworkingTaskReciever[0].is_done
-                  ? "done"
-                  : "sedang_networking";
-              } else if (ConnectionReciever.length) {
+              if (ConnectionReciever.length) {
                 status = ConnectionReciever[0].status;
               } else if (ConnectionRequestReciever.length) {
                 status = "menunggu_konfirmasi";
@@ -151,14 +138,6 @@ export async function GET(req: NextRequest) {
             status: true,
           },
         },
-        NetworkingTaskReciever: {
-          where: {
-            fromId: userId,
-          },
-          select: {
-            is_done: true,
-          },
-        },
       },
     });
     const friends_response = {
@@ -167,16 +146,11 @@ export async function GET(req: NextRequest) {
             ConnectionReciever,
             ConnectionRequestReciever,
             ConnectionRequestSender,
-            NetworkingTaskReciever,
             createdAt,
             ...rest
           }) => {
             let status = "not_connected";
-            if (NetworkingTaskReciever.length) {
-              status = NetworkingTaskReciever[0].is_done
-                ? "done"
-                : "sedang_networking";
-            } else if (ConnectionReciever.length) {
+            if (ConnectionReciever.length) {
               status = ConnectionReciever[0].status;
             } else if (ConnectionRequestReciever.length) {
               status = "menunggu_konfirmasi";

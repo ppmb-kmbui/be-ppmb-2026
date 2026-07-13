@@ -16,12 +16,6 @@ const prisma = new PrismaClient({
 const SEED_PASSWORD = "Password123!";
 const SEED_IMAGE = "https://placehold.co/600x600/png";
 
-async function resetSequence(tableName: string, sequenceName: string) {
-  await prisma.$executeRawUnsafe(
-    `SELECT setval('${sequenceName}', (SELECT COALESCE(MAX(id), 1) FROM "${tableName}"));`,
-  );
-}
-
 async function seedUsers(passwordHash: string) {
   const admin = await prisma.user.upsert({
     where: { email: "admin@ppmb-kmbui.test" },
@@ -151,154 +145,6 @@ async function seedUsers(passwordHash: string) {
   return { admin, nala, bima, citra, darren };
 }
 
-async function ensureSeniorUser(fullname: string, batch: number) {
-  const existing = await prisma.seniorUser.findFirst({
-    where: { fullname, batch },
-  });
-
-  if (existing) return existing;
-
-  return prisma.seniorUser.create({
-    data: { fullname, batch },
-  });
-}
-
-async function seedQuestions() {
-  const questions = [
-    {
-      id: 1,
-      question: "Jalur masuk UI serta alasan mengambil jurusan tersebut",
-      group_id: 1,
-    },
-    {
-      id: 2,
-      question:
-        "Suasana hati setelah dinyatakan diterima di UI beserta impian/persiapan akademik kedepannya",
-      group_id: 1,
-    },
-    {
-      id: 3,
-      question:
-        "Kegiatan apa yang ingin kamu coba selama kuliah untuk menemukan minat dan tujuan baru",
-      group_id: 2,
-    },
-    {
-      id: 4,
-      question: "Apa satu kebiasaan kecil yang ingin kamu tingkatkan selama kuliah?",
-      group_id: 2,
-    },
-    {
-      id: 5,
-      question:
-        "Kalau kamu bisa punya superpower, apa yang kamu pilih dan bagaimana kamu akan menggunakannya untuk membantu orang lain",
-      group_id: 2,
-    },
-    {
-      id: 6,
-      question: "Apa cita-cita atau impianmu, dan kenapa memilih itu",
-      group_id: 2,
-    },
-    {
-      id: 7,
-      question: "Pengalaman yang paling seru dan mengesankan selama SMA",
-      group_id: 2,
-    },
-    {
-      id: 8,
-      question: "Kalau ada pintu doraemon kemana saja, kamu mau pergi kemana dan kenapa",
-      group_id: 2,
-    },
-    {
-      id: 9,
-      question: "Area atau tempat di UI mana yang pernah kamu datangi atau ingin datangi",
-      group_id: 2,
-    },
-    {
-      id: 10,
-      question: "Kalau kamu bisa jadi karakter di film atau buku, kamu mau jadi siapa dan alasannya apa",
-      group_id: 2,
-    },
-    {
-      id: 11,
-      question: "Siapa role model-mu dan apa hal yang paling kamu suka dari dia",
-      group_id: 2,
-    },
-    {
-      id: 12,
-      question: "Musik yang paling membantu dirimu untuk moodbooster",
-      group_id: 2,
-    },
-    {
-      id: 13,
-      question: "Makanan dan minuman yang paling tidak kamu suka dan alasannya",
-      group_id: 2,
-    },
-  ];
-
-  for (const item of questions) {
-    await prisma.question.upsert({
-      where: { id: item.id },
-      update: {
-        question: item.question,
-        group_id: item.group_id,
-      },
-      create: item,
-    });
-  }
-
-  const katingQuestions = [
-    {
-      id: 1,
-      question: "Kiat untuk mengatur waktu dalam perkuliahan dan motivasi untuk tetap semangat kuliah",
-      group_id: 1,
-    },
-    {
-      id: 2,
-      question: "Kesan pertama berkuliah di UI",
-      group_id: 1,
-    },
-    {
-      id: 3,
-      question: "Tips and trick belajar dan rekomendasi organisasi dan UKM di UI",
-      group_id: 1,
-    },
-    {
-      id: 4,
-      question: "Rekomendasi makanan di UI",
-      group_id: 1,
-    },
-    {
-      id: 5,
-      question: "Apa pendapat Ko/Ci tentang KMBUI dan pengalaman di KMBUI",
-      group_id: 1,
-    },
-    {
-      id: 6,
-      question: "Tempat nongkrong atau belajar di dalam UI dan sekitar UI",
-      group_id: 1,
-    },
-    {
-      id: 7,
-      question: "Hobi dan kegiatan saat luang di UI",
-      group_id: 1,
-    },
-  ];
-
-  for (const item of katingQuestions) {
-    await prisma.questionKating.upsert({
-      where: { id: item.id },
-      update: {
-        question: item.question,
-        group_id: item.group_id,
-      },
-      create: item,
-    });
-  }
-
-  await resetSequence("questions", "questions_id_seq");
-  await resetSequence("questions_kating", "questions_kating_id_seq");
-}
-
 async function ensureConnection(fromId: number, toId: number, status = "accepted") {
   const existing = await prisma.connection.findFirst({
     where: { fromId, toId },
@@ -341,294 +187,89 @@ async function seedConnections(users: Awaited<ReturnType<typeof seedUsers>>) {
   await ensureConnectionRequest(users.citra.id, users.nala.id);
 }
 
-async function seedNetworking(users: Awaited<ReturnType<typeof seedUsers>>, seniors: { adrian: { id: number }; michelle: { id: number } }) {
-  await prisma.networkingTask.upsert({
-    where: {
-      fromId_toId: {
-        fromId: users.nala.id,
-        toId: users.bima.id,
-      },
-    },
-    update: {
-      img_url: `${SEED_IMAGE}?text=Nala+Bima`,
-      file_url: "https://example.com/seed/networking/nala-bima.pdf",
-      description: "Networking maba dengan Bima setelah sesi PPMB.",
-      is_done: true,
-    },
-    create: {
-      fromId: users.nala.id,
-      toId: users.bima.id,
-      img_url: `${SEED_IMAGE}?text=Nala+Bima`,
-      file_url: "https://example.com/seed/networking/nala-bima.pdf",
-      description: "Networking maba dengan Bima setelah sesi PPMB.",
-      is_done: true,
-    },
-  });
-
-  await prisma.networkingTask.upsert({
-    where: {
-      fromId_toId: {
-        fromId: users.bima.id,
-        toId: users.nala.id,
-      },
-    },
-    update: {
-      img_url: `${SEED_IMAGE}?text=Bima+Nala`,
-      file_url: "https://example.com/seed/networking/bima-nala.pdf",
-      description: "Networking balasan dari Bima ke Nala.",
-      is_done: true,
-    },
-    create: {
-      fromId: users.bima.id,
-      toId: users.nala.id,
-      img_url: `${SEED_IMAGE}?text=Bima+Nala`,
-      file_url: "https://example.com/seed/networking/bima-nala.pdf",
-      description: "Networking balasan dari Bima ke Nala.",
-      is_done: true,
-    },
-  });
-
-  await prisma.networkingTask.upsert({
-    where: {
-      fromId_toId: {
-        fromId: users.citra.id,
-        toId: users.darren.id,
-      },
-    },
-    update: {
-      img_url: null,
-      file_url: null,
-      description: null,
-      is_done: false,
-    },
-    create: {
-      fromId: users.citra.id,
-      toId: users.darren.id,
-      is_done: false,
-    },
-  });
-
-  const mabaAnswers = [
+async function seedNetworkingSubmissions(users: Awaited<ReturnType<typeof seedUsers>>) {
+  const submissions = [
     {
-      fromId: users.nala.id,
-      toId: users.bima.id,
-      answers: [
-        { questionId: 1, answer: "Aku masuk lewat SNBT dan memilih Fasilkom karena suka problem solving." },
-        { questionId: 4, answer: "Aku ingin lebih konsisten mencatat dan review materi tiap minggu." },
-        { questionId: 6, answer: "Aku ingin membangun produk teknologi yang bermanfaat untuk pendidikan." },
-        { questionId: 13, answer: "Aku kurang suka pare karena pahit, tapi tetap menghargai fans pare." },
-      ],
+      userId: users.nala.id,
+      firstDocsUrl: "https://docs.google.com/document/d/seed-networking-nala-1/edit",
+      secondDocsUrl: "https://docs.google.com/document/d/seed-networking-nala-2/edit",
     },
     {
-      fromId: users.bima.id,
-      toId: users.nala.id,
-      answers: [
-        { questionId: 2, answer: "Rasanya campur aduk: lega, senang, dan sedikit deg-degan." },
-        { questionId: 7, answer: "Pengalaman paling seru saat jadi panitia pensi sekolah." },
-        { questionId: 11, answer: "Role model-ku orang tua karena konsisten dan sabar." },
-      ],
-    },
-    {
-      fromId: users.citra.id,
-      toId: users.darren.id,
-      answers: [
-        { questionId: 3, answer: null },
-        { questionId: 5, answer: null },
-        { questionId: 9, answer: null },
-      ],
+      userId: users.bima.id,
+      firstDocsUrl: "https://docs.google.com/document/d/seed-networking-bima-1/edit",
+      secondDocsUrl: "https://docs.google.com/document/d/seed-networking-bima-2/edit",
     },
   ];
 
-  for (const task of mabaAnswers) {
-    for (const item of task.answers) {
-      await prisma.questionTask.upsert({
-        where: {
-          questionId_fromId_toId: {
-            questionId: item.questionId,
-            fromId: task.fromId,
-            toId: task.toId,
-          },
-        },
-        update: { answer: item.answer },
-        create: {
-          questionId: item.questionId,
-          fromId: task.fromId,
-          toId: task.toId,
-          answer: item.answer,
-        },
-      });
-    }
-  }
-
-  await prisma.networkingKatingTask.upsert({
-    where: {
-      fromId_toId: {
-        fromId: users.nala.id,
-        toId: seniors.adrian.id,
+  for (const submission of submissions) {
+    await prisma.networkingSubmission.upsert({
+      where: { userId: submission.userId },
+      update: {
+        firstDocsUrl: submission.firstDocsUrl,
+        secondDocsUrl: submission.secondDocsUrl,
       },
-    },
-    update: {
-      img_url: `${SEED_IMAGE}?text=Nala+Adrian`,
-      file_url: "https://example.com/seed/networking/nala-adrian.pdf",
-      description: "Networking dengan Ko Adrian tentang adaptasi kuliah.",
-    },
-    create: {
-      fromId: users.nala.id,
-      toId: seniors.adrian.id,
-      img_url: `${SEED_IMAGE}?text=Nala+Adrian`,
-      file_url: "https://example.com/seed/networking/nala-adrian.pdf",
-      description: "Networking dengan Ko Adrian tentang adaptasi kuliah.",
-    },
-  });
-
-  await prisma.networkingKatingTask.upsert({
-    where: {
-      fromId_toId: {
-        fromId: users.bima.id,
-        toId: seniors.michelle.id,
-      },
-    },
-    update: {
-      img_url: `${SEED_IMAGE}?text=Bima+Michelle`,
-      file_url: "https://example.com/seed/networking/bima-michelle.pdf",
-      description: "Networking dengan Ci Michelle tentang organisasi dan akademik.",
-    },
-    create: {
-      fromId: users.bima.id,
-      toId: seniors.michelle.id,
-      img_url: `${SEED_IMAGE}?text=Bima+Michelle`,
-      file_url: "https://example.com/seed/networking/bima-michelle.pdf",
-      description: "Networking dengan Ci Michelle tentang organisasi dan akademik.",
-    },
-  });
-
-  const katingAnswers = [
-    {
-      fromId: users.nala.id,
-      toId: seniors.adrian.id,
-      answers: [
-        "Pakai kalender mingguan dan jangan menumpuk tugas.",
-        "Awalnya ramai dan menantang, tapi cepat terasa menyenangkan.",
-        "Coba UKM sesuai minat dulu, jangan takut eksplor.",
-        "Kantin Teknik dan sekitar Stasiun UI banyak opsi.",
-        "KMBUI terasa hangat karena banyak teman lintas fakultas.",
-        "Perpus UI nyaman untuk fokus belajar.",
-        "Biasanya olahraga ringan atau ngopi bersama teman.",
-      ],
-    },
-    {
-      fromId: users.bima.id,
-      toId: seniors.michelle.id,
-      answers: [
-        "Bikin prioritas, tidur cukup, dan belajar dari jauh hari.",
-        "Seru karena banyak kesempatan baru.",
-        "Ikut organisasi secukupnya, kualitas lebih penting dari jumlah.",
-        "Cobain makanan di kantin FEB.",
-        "KMBUI membantu aku punya support system.",
-        "Perpus pusat dan taman dekat danau enak untuk diskusi.",
-        "Aku suka baca dan jalan sore di kampus.",
-      ],
-    },
-  ];
-
-  for (const task of katingAnswers) {
-    for (const [index, answer] of task.answers.entries()) {
-      const questionId = index + 1;
-      await prisma.questionKatingTask.upsert({
-        where: {
-          questionId_fromId_toId: {
-            questionId,
-            fromId: task.fromId,
-            toId: task.toId,
-          },
-        },
-        update: { answer },
-        create: {
-          questionId,
-          fromId: task.fromId,
-          toId: task.toId,
-          answer,
-        },
-      });
-    }
+      create: submission,
+    });
   }
 }
 
 async function seedTaskSubmissions(users: Awaited<ReturnType<typeof seedUsers>>) {
-  await prisma.firstFossibSessionSubmission.upsert({
-    where: { userId: users.nala.id },
-    update: {
-      file_url: "https://docs.google.com/document/d/seed-fossib-1-nala/edit",
-      photo_url: `${SEED_IMAGE}?text=Fossib+1`,
-      description: "Catatan refleksi Fossib sesi pertama.",
-    },
-    create: {
+  const fossibSubmissions = [
+    {
       userId: users.nala.id,
-      file_url: "https://docs.google.com/document/d/seed-fossib-1-nala/edit",
-      photo_url: `${SEED_IMAGE}?text=Fossib+1`,
-      description: "Catatan refleksi Fossib sesi pertama.",
+      fileUrl: "https://res.cloudinary.com/ppmb-kmbui/raw/upload/seed/fossib-nala.pdf",
+      photoUrl: `${SEED_IMAGE}?text=Fossib+Nala`,
     },
-  });
+    {
+      userId: users.bima.id,
+      fileUrl: "https://res.cloudinary.com/ppmb-kmbui/raw/upload/seed/fossib-bima.pdf",
+      photoUrl: `${SEED_IMAGE}?text=Fossib+Bima`,
+    },
+  ];
 
-  await prisma.secondFossibSessionSubmission.upsert({
-    where: { userId: users.nala.id },
-    update: {
-      file_url: "https://docs.google.com/document/d/seed-fossib-2-nala/edit",
-      photo_url: `${SEED_IMAGE}?text=Fossib+2`,
-      description: "Catatan refleksi Fossib sesi kedua.",
-    },
-    create: {
-      userId: users.nala.id,
-      file_url: "https://docs.google.com/document/d/seed-fossib-2-nala/edit",
-      photo_url: `${SEED_IMAGE}?text=Fossib+2`,
-      description: "Catatan refleksi Fossib sesi kedua.",
-    },
-  });
+  for (const submission of fossibSubmissions) {
+    await prisma.fossibSubmission.upsert({
+      where: { userId: submission.userId },
+      update: {
+        fileUrl: submission.fileUrl,
+        photoUrl: submission.photoUrl,
+      },
+      create: submission,
+    });
+  }
 
   await prisma.insightHuntingSubmission.upsert({
     where: { userId: users.nala.id },
     update: {
-      file_url: "https://docs.google.com/document/d/seed-insight-hunting-nala/edit",
+      file_url: "https://res.cloudinary.com/ppmb-kmbui/raw/upload/seed/insight-hunting-nala.pdf",
     },
     create: {
       userId: users.nala.id,
-      file_url: "https://docs.google.com/document/d/seed-insight-hunting-nala/edit",
+      file_url: "https://res.cloudinary.com/ppmb-kmbui/raw/upload/seed/insight-hunting-nala.pdf",
     },
   });
 
   await prisma.explorerSubmission.upsert({
     where: { userId: users.nala.id },
     update: {
+      activityName: "Puja Bakti dan Diskusi Dhamma",
       img_url: `${SEED_IMAGE}?text=Explorer`,
     },
     create: {
       userId: users.nala.id,
+      activityName: "Puja Bakti dan Diskusi Dhamma",
       img_url: `${SEED_IMAGE}?text=Explorer`,
     },
   });
 
-  await prisma.mentoringVlogSubmission.upsert({
+  await prisma.mentoringSubmission.upsert({
     where: { userId: users.nala.id },
     update: {
-      file_url: "https://drive.google.com/drive/folders/seed-mentoring-nala",
-      description: "Folder Google Drive berisi video dan TTS mentoring.",
+      gdriveUrl: "https://drive.google.com/drive/folders/seed-mentoring-nala",
     },
     create: {
       userId: users.nala.id,
-      file_url: "https://drive.google.com/drive/folders/seed-mentoring-nala",
-      description: "Folder Google Drive berisi video dan TTS mentoring.",
-    },
-  });
-
-  await prisma.firstFossibSessionSubmission.upsert({
-    where: { userId: users.bima.id },
-    update: {
-      file_url: null,
-      description: "Bima mengisi refleksi teks tanpa lampiran.",
-    },
-    create: {
-      userId: users.bima.id,
-      description: "Bima mengisi refleksi teks tanpa lampiran.",
+      gdriveUrl: "https://drive.google.com/drive/folders/seed-mentoring-nala",
     },
   });
 }
@@ -866,14 +507,9 @@ export async function main() {
 
   const passwordHash = await bcrypt.hash(SEED_PASSWORD, 12);
   const users = await seedUsers(passwordHash);
-  const seniors = {
-    adrian: await ensureSeniorUser("Ko Adrian Santoso", 2024),
-    michelle: await ensureSeniorUser("Ci Michelle Tan", 2023),
-  };
 
-  await seedQuestions();
   await seedConnections(users);
-  await seedNetworking(users, seniors);
+  await seedNetworkingSubmissions(users);
   await seedTaskSubmissions(users);
   await seedQuotes(users);
   await seedContent();
