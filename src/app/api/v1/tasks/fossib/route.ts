@@ -4,6 +4,7 @@ import serverResponse, { unauthorizedResponse } from "@/utils/serverResponse";
 import { isImageUrl, isPdfUrl, taskSubmissionErrorResponse, urlResourceKey } from "@/utils/taskSubmission";
 import { NextRequest } from "next/server";
 import { z } from "zod";
+import { taskDeadlineGuard } from "@/lib/taskDeadline";
 
 const PhotoUrlSchema = z.string().trim().url("URL foto tidak valid").refine(
   (value) => isImageUrl(value),
@@ -66,6 +67,9 @@ export async function GET(req: NextRequest) {
 export async function POST(req: NextRequest) {
   const userId = await getUserId(req);
   if (!userId) return unauthorizedResponse();
+
+  const deadlineResponse = taskDeadlineGuard("fossib");
+  if (deadlineResponse) return deadlineResponse;
 
   try {
     const body = SubmissionSchema.parse(await req.json());

@@ -4,6 +4,7 @@ import serverResponse, { unauthorizedResponse } from "@/utils/serverResponse";
 import { isPdfUrl, taskSubmissionErrorResponse } from "@/utils/taskSubmission";
 import { NextRequest } from "next/server";
 import { z } from "zod";
+import { taskDeadlineGuard } from "@/lib/taskDeadline";
 
 const PdfUrlSchema = z.string().trim().url("URL PDF tidak valid").refine(
   (value) => isPdfUrl(value),
@@ -24,6 +25,10 @@ async function getUserId(req: NextRequest) {
 export async function POST(req: NextRequest) {
   const userId = await getUserId(req);
   if (!userId) return unauthorizedResponse();
+
+  const deadlineResponse = taskDeadlineGuard("insightHunting");
+  if (deadlineResponse) return deadlineResponse;
+
   try {
     const body = SubmissionSchema.parse(await req.json());
     const data = await prisma.insightHuntingSubmission.upsert({

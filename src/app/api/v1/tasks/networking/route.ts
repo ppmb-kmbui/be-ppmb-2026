@@ -4,6 +4,7 @@ import serverResponse, { unauthorizedResponse } from "@/utils/serverResponse";
 import { googleDocsResourceId, taskSubmissionErrorResponse } from "@/utils/taskSubmission";
 import { NextRequest } from "next/server";
 import { z } from "zod";
+import { taskDeadlineGuard } from "@/lib/taskDeadline";
 
 const GoogleDocsUrlSchema = z.string().trim().url("Link Google Docs tidak valid").refine(
   (value) => googleDocsResourceId(value) !== null,
@@ -80,6 +81,9 @@ export async function GET(req: NextRequest) {
 export async function POST(req: NextRequest) {
   const userId = await getUserId(req);
   if (!userId) return unauthorizedResponse();
+
+  const deadlineResponse = taskDeadlineGuard("networking");
+  if (deadlineResponse) return deadlineResponse;
 
   try {
     const body = SubmissionSchema.parse(await req.json());

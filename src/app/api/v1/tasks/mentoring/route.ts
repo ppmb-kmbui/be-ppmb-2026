@@ -4,6 +4,7 @@ import serverResponse, { unauthorizedResponse } from "@/utils/serverResponse";
 import { isGoogleDriveResourceUrl, taskSubmissionErrorResponse } from "@/utils/taskSubmission";
 import { NextRequest } from "next/server";
 import { z } from "zod";
+import { taskDeadlineGuard } from "@/lib/taskDeadline";
 
 const GdriveUrlSchema = z.string().trim().url("Link Google Drive tidak valid").refine(
   (value) => isGoogleDriveResourceUrl(value),
@@ -58,6 +59,9 @@ export async function GET(req: NextRequest) {
 export async function POST(req: NextRequest) {
   const userId = await getUserId(req);
   if (!userId) return unauthorizedResponse();
+
+  const deadlineResponse = taskDeadlineGuard("mentoring");
+  if (deadlineResponse) return deadlineResponse;
 
   try {
     const raw = SubmissionSchema.parse(await req.json());

@@ -6,6 +6,7 @@ import { z, ZodError} from "zod";
 import serverResponse from "@/utils/serverResponse";
 import { isImageUrl } from "@/utils/taskSubmission";
 import { ValidationError } from "@/types/api-type";
+import { FacultySchema } from "@/lib/faculty";
 
 const UserSchema = z.object({
   fullname: z.string().trim().min(3, "Nama lengkap minimal 3 karakter"),
@@ -18,7 +19,7 @@ const UserSchema = z.object({
     (value) => isImageUrl(value),
     "Foto profil harus berupa URL gambar HTTPS",
   ),
-  faculty: z.string().trim().min(2, "Fakultas wajib diisi"),
+  faculty: FacultySchema,
   batch: z.coerce.number().int().min(2020).max(2100),
 }).refine((data) => data.password === data.confirmPassword, {
   path: ["confirmPassword"],
@@ -126,7 +127,8 @@ export async function POST(req: NextRequest) {
  *                 example: https://example.com/avatar.jpg
  *               faculty:
  *                 type: string
- *                 example: Ilmu Komputer
+ *                 enum: [Fasilkom, FKM, Fisip, FKG, FK, FMIPA, FT, Vokasi, FH, FPsi, FIA, FF, FIK, FEB, Sastra Mesin]
+ *                 example: Fasilkom
  *               batch:
  *                 type: integer
  *                 example: 2026
@@ -161,7 +163,8 @@ export async function POST(req: NextRequest) {
  *                       example: https://example.com/avatar.jpg
  *                     faculty:
  *                       type: string
- *                       example: Ilmu Komputer
+ *                       enum: [Fasilkom, FKM, Fisip, FKG, FK, FMIPA, FT, Vokasi, FH, FPsi, FIA, FF, FIK, FEB, Sastra Mesin]
+ *                       example: Fasilkom
  *                     batch:
  *                       type: integer
  *                       example: 2023

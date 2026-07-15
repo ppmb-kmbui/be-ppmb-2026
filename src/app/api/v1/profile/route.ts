@@ -3,13 +3,14 @@ import { authenticateRequest } from "@/lib/auth";
 import { NextRequest } from "next/server";
 import serverResponse, { InvalidUserResponse, unauthorizedResponse } from "@/utils/serverResponse";
 import { z } from "zod";
+import { FacultySchema } from "@/lib/faculty";
 
 const UpdateProfileSchema = z.object({
   imgUrl: z.string().trim().min(1).optional(),
   fullname: z.string().trim().min(3).optional(),
   lineId: z.string().trim().min(2).optional(),
   whatsappNumber: z.string().trim().regex(/^(?:\+62|62|0)8\d{7,12}$/).optional(),
-  faculty: z.string().trim().min(2).optional(),
+  faculty: FacultySchema.optional(),
 }).refine((value) => Object.keys(value).length > 0, "Minimal satu field harus diisi");
 
 export async function GET(req: NextRequest) {
@@ -135,7 +136,7 @@ export async function PUT(req: NextRequest) {
  *                       example: "2025-07-08T11:51:35.194Z"
  *                     faculty:
  *                       type: string
- *                       example: Computer Science
+ *                       example: Fasilkom
  *                     isAdmin:
  *                       type: boolean
  *                       example: false
@@ -162,8 +163,8 @@ export async function PUT(req: NextRequest) {
  *                   type: string
  *                   example: JWT Token tidak valid
  *   put:
- *     summary: Update profil user (hanya imgUrl)
- *     description: Endpoint ini membutuhkan JWT token pada header Authorization. Hanya field imgUrl yang dapat diupdate.
+ *     summary: Update profil user
+ *     description: Endpoint ini membutuhkan JWT token. Kirim minimal satu field yang ingin diperbarui.
  *     tags:
  *       - Profile
  *     security:
@@ -178,6 +179,19 @@ export async function PUT(req: NextRequest) {
  *               imgUrl:
  *                 type: string
  *                 example: https://example.com/avatar.jpg
+ *               fullname:
+ *                 type: string
+ *                 example: Dennis Wijaya
+ *               lineId:
+ *                 type: string
+ *                 example: dennis.wijaya
+ *               whatsappNumber:
+ *                 type: string
+ *                 example: "081234567890"
+ *               faculty:
+ *                 type: string
+ *                 enum: [Fasilkom, FKM, Fisip, FKG, FK, FMIPA, FT, Vokasi, FH, FPsi, FIA, FF, FIK, FEB, Sastra Mesin]
+ *                 example: Fasilkom
  *     responses:
  *       200:
  *         description: Berhasil memperbarui profil user
@@ -217,7 +231,7 @@ export async function PUT(req: NextRequest) {
  *                       example: "2025-07-08T11:51:35.194Z"
  *                     faculty:
  *                       type: string
- *                       example: Computer Science
+ *                       example: Fasilkom
  *                     isAdmin:
  *                       type: boolean
  *                       example: false

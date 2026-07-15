@@ -24,6 +24,30 @@ Frontend unsigned upload membutuhkan `NEXT_PUBLIC_CLOUDINARY_CLOUD_NAME` dan `NE
 
 Link Google Docs dan Google Drive tidak diunggah ke backend. Peserta menempelkan link share, lalu frontend mengirim link tersebut sebagai JSON.
 
+## Deadline submission
+
+Setiap `POST` submission memeriksa waktu server sebelum memvalidasi payload atau menyimpan data. `POST` yang sama dipakai untuk submission pertama dan update. Endpoint `GET` tetap dapat digunakan setelah deadline.
+
+Deadline dikonfigurasi melalui environment variable berikut:
+
+- `TASK_DEADLINE_NETWORKING`
+- `TASK_DEADLINE_INSIGHT_HUNTING`
+- `TASK_DEADLINE_EXPLORER`
+- `TASK_DEADLINE_MENTORING`
+- `TASK_DEADLINE_FOSSIB`
+
+Nilai wajib berbentuk ISO 8601 dengan zona waktu eksplisit, misalnya `2026-08-10T23:59:59+07:00` untuk WIB. Submission ditutup saat waktu server sama dengan atau melewati deadline dan backend mengembalikan HTTP `403`. Konfigurasi yang kosong atau tidak valid ditolak secara fail-closed dengan HTTP `503`, sehingga deployment tidak pernah menerima submission tanpa deadline yang jelas.
+
+Deadline PPMB 2026:
+
+| Tugas | Deadline WIB | Nilai environment |
+|---|---|---|
+| Insight Hunting | 14 Agustus 2026, 23:59:59 | `2026-08-14T23:59:59+07:00` |
+| Networking | 31 Agustus 2026, 23:59:59 | `2026-08-31T23:59:59+07:00` |
+| Mentoring | 31 Agustus 2026, 23:59:59 | `2026-08-31T23:59:59+07:00` |
+| KMBUI Explorer | 7 September 2026, 23:59:59 | `2026-09-07T23:59:59+07:00` |
+| FOSSIB (Foster Sibling) | 7 September 2026, 23:59:59 | `2026-09-07T23:59:59+07:00` |
+
 ## Networking
 
 Endpoint:

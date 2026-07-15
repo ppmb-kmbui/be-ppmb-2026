@@ -2,6 +2,7 @@ import { NextRequest } from "next/server";
 import { SignJWT } from "jose";
 
 import { authenticateRequest } from "../src/lib/auth";
+import { TASK_DEADLINE_ENV_KEYS } from "../src/lib/taskDeadline";
 
 import * as adminTasks from "../src/app/api/v1/admin/tasks/[id]/route";
 import * as adminUsers from "../src/app/api/v1/admin/users/route";
@@ -28,6 +29,12 @@ type Check = {
 
 const request = (path: string, method = "GET") =>
   new NextRequest(`http://localhost:4000${path}`, { method });
+
+const requestWithToken = (path: string, token: string) =>
+  new NextRequest(`http://localhost:4000${path}`, {
+    method: "POST",
+    headers: { authorization: `Bearer ${token}` },
+  });
 
 const params = { params: Promise.resolve({ id: "1" }) };
 
@@ -92,5 +99,26 @@ if (nonAdminResponse.status !== 403) {
   throw new Error(`Admin route mengembalikan ${nonAdminResponse.status} untuk user non-admin, seharusnya 403`);
 }
 
+for (const envKey of Object.values(TASK_DEADLINE_ENV_KEYS)) {
+  process.env[envKey] = "2000-01-01T00:00:00+07:00";
+}
+
+const closedDeadlineChecks: Check[] = [
+  { name: "tasks/networking POST", run: () => networking.POST(requestWithToken("/api/v1/tasks/networking", token)) },
+  { name: "explorer POST", run: () => explorer.POST(requestWithToken("/api/v1/tasks/explorer", token)) },
+  { name: "fossib POST", run: () => fossib.POST(requestWithToken("/api/v1/tasks/fossib", token)) },
+  { name: "insight-hunting POST", run: () => insightHunting.POST(requestWithToken("/api/v1/tasks/insight-hunting", token)) },
+  { name: "mentoring POST", run: () => mentoring.POST(requestWithToken("/api/v1/tasks/mentoring", token)) },
+];
+
+for (const check of closedDeadlineChecks) {
+  const response = await check.run();
+  const body = await response.json();
+  if (response.status !== 403 || body.message !== "Pengumpulan tugas sudah ditutup.") {
+    throw new Error(`${check.name} tidak menolak submission setelah deadline dengan respons 403 yang benar`);
+  }
+}
+
 console.log(`${checks.length} protected route handlers menolak request tanpa JWT dengan status 401.`);
 console.log("Bearer case-insensitive, cookie auth, dan admin 403 tervalidasi.");
+console.log(`${closedDeadlineChecks.length} endpoint submission menolak request setelah deadline.`);

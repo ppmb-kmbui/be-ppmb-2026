@@ -14,6 +14,9 @@
     "db:seed": "prisma db seed",
     "db:check-integrity": "tsx scripts/check-db-integrity.ts",
     "test:auth-routes": "tsx scripts/check-route-auth.ts",
+    "test:faculty": "tsx scripts/check-faculty-validation.ts",
+    "test:faculty-routes": "tsx scripts/check-faculty-routes.ts",
+    "test:task-deadlines": "tsx scripts/check-task-deadlines.ts",
     "test:task-contracts": "tsx scripts/check-task-contracts.ts"
   },
   "dependencies": {
