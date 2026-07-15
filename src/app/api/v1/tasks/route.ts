@@ -29,24 +29,14 @@ export async function GET(req: NextRequest) {
     return unauthorizedResponse();
   }
 
-  const [
-    networking,
-    fossib,
-    insightHunting,
-    mentoring,
-    legacyMentoringVlog,
-    legacyMentoringReflection,
-    explorer,
-  ] = await Promise.all([
-    prisma.networkingSubmission.findUnique({ where: { userId } }),
-    prisma.fossibSubmission.findUnique({ where: { userId } }),
-    prisma.insightHuntingSubmission.findUnique({ where: { userId } }),
-    prisma.mentoringSubmission.findUnique({ where: { userId } }),
-    // Kept for legacy visibility only. Neither legacy model contributes to progress.
-    prisma.mentoringVlogSubmission.findUnique({ where: { userId } }),
-    prisma.mentoringReflection.findUnique({ where: { userId } }),
-    prisma.explorerSubmission.findUnique({ where: { userId } }),
-  ]);
+  const networking = await prisma.networkingSubmission.findUnique({ where: { userId } });
+  const fossib = await prisma.fossibSubmission.findUnique({ where: { userId } });
+  const insightHunting = await prisma.insightHuntingSubmission.findUnique({ where: { userId } });
+  const mentoring = await prisma.mentoringSubmission.findUnique({ where: { userId } });
+  // Kept for legacy visibility only. Neither legacy model contributes to progress.
+  const legacyMentoringVlog = await prisma.mentoringVlogSubmission.findUnique({ where: { userId } });
+  const legacyMentoringReflection = await prisma.mentoringReflection.findUnique({ where: { userId } });
+  const explorer = await prisma.explorerSubmission.findUnique({ where: { userId } });
 
   const firstDocumentId = googleDocsResourceId(networking?.firstDocsUrl);
   const secondDocumentId = googleDocsResourceId(networking?.secondDocsUrl);

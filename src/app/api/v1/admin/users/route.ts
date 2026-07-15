@@ -10,6 +10,20 @@ import {
 } from "@/utils/taskSubmission";
 import { NextRequest } from "next/server";
 
+type AdminUserListRecord = {
+  id: number;
+  fullname: string | null;
+  email: string;
+  imgUrl: string | null;
+  faculty: string | null;
+  batch: number;
+  NetworkingSubmission: { firstDocsUrl: string | null; secondDocsUrl: string | null } | null;
+  ExplorerSubmission: { activityName: string | null; img_url: string }[];
+  MentoringSubmission: { gdriveUrl: string } | null;
+  FossibSubmission: { fileUrl: string; photoUrl: string } | null;
+  InsightHuntingSubmission: { file_url: string }[];
+};
+
 export async function GET(req: NextRequest) {
   try {
     const { isAdmin } = await authenticateRequest(req);
@@ -26,45 +40,44 @@ export async function GET(req: NextRequest) {
     ...(search ? { fullname: { contains: search, mode: "insensitive" as const } } : {}),
   };
 
-  const [total, users] = await Promise.all([
-    prisma.user.count({ where }),
-    prisma.user.findMany({
-      where,
-      skip: (page - 1) * limit,
-      take: limit,
-      orderBy: { fullname: "asc" },
-      select: {
-        id: true, fullname: true, email: true, imgUrl: true, faculty: true, batch: true,
-        NetworkingSubmission: {
-          select: { firstDocsUrl: true, secondDocsUrl: true },
-        },
-        ExplorerSubmission: {
-          select: { activityName: true, img_url: true },
-        },
-        MentoringSubmission: {
-          select: { gdriveUrl: true },
-        },
-        FossibSubmission: {
-          select: { fileUrl: true, photoUrl: true },
-        },
-        InsightHuntingSubmission: {
-          select: { file_url: true },
-        },
+  const total = await prisma.user.count({ where });
+  const users = await prisma.user.findMany({
+    where,
+    skip: (page - 1) * limit,
+    take: limit,
+    orderBy: { fullname: "asc" },
+    select: {
+      id: true, fullname: true, email: true, imgUrl: true, faculty: true, batch: true,
+      NetworkingSubmission: {
+        select: { firstDocsUrl: true, secondDocsUrl: true },
       },
-    }),
-  ]);
+      ExplorerSubmission: {
+        select: { activityName: true, img_url: true },
+      },
+      MentoringSubmission: {
+        select: { gdriveUrl: true },
+      },
+      FossibSubmission: {
+        select: { fileUrl: true, photoUrl: true },
+      },
+      InsightHuntingSubmission: {
+        select: { file_url: true },
+      },
+    },
+  }) as AdminUserListRecord[];
 
   const hasValue = (value: string | null | undefined) =>
     typeof value === "string" && value.trim().length > 0;
 
-  const data = users.map(({
-    NetworkingSubmission,
-    ExplorerSubmission,
-    MentoringSubmission,
-    FossibSubmission,
-    InsightHuntingSubmission,
-    ...user
-  }) => {
+  const data = users.map((userRecord) => {
+    const {
+      NetworkingSubmission,
+      ExplorerSubmission,
+      MentoringSubmission,
+      FossibSubmission,
+      InsightHuntingSubmission,
+      ...user
+    } = userRecord;
     const firstDocumentId = googleDocsResourceId(NetworkingSubmission?.firstDocsUrl);
     const secondDocumentId = googleDocsResourceId(NetworkingSubmission?.secondDocsUrl);
     const networkingCompleted = Number(firstDocumentId !== null) + Number(

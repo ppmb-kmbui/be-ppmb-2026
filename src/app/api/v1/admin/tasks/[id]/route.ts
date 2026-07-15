@@ -32,36 +32,24 @@ export async function GET(req: NextRequest, props: { params: Promise<{ id: strin
     return serverResponse({ success: false, message: "Bad Request", error: "User ID tidak valid", status: 400 });
   }
 
-  const [
-    user,
-    networking,
-    fossib,
-    insightHunting,
-    mentoring,
-    explorer,
-    legacyMentoringVlog,
-    legacyMentoringReflection,
-    legacyFirstFossib,
-    legacySecondFossib,
-  ] = await Promise.all([
-    prisma.user.findUnique({
-      where: { id: userId },
-      select: { id: true, fullname: true, email: true, imgUrl: true, faculty: true, batch: true, lineId: true, whatsappNumber: true },
-    }),
-    prisma.networkingSubmission.findUnique({ where: { userId } }),
-    prisma.fossibSubmission.findUnique({ where: { userId } }),
-    prisma.insightHuntingSubmission.findUnique({ where: { userId } }),
-    prisma.mentoringSubmission.findUnique({ where: { userId } }),
-    prisma.explorerSubmission.findUnique({ where: { userId } }),
-    prisma.mentoringVlogSubmission.findUnique({ where: { userId } }),
-    prisma.mentoringReflection.findUnique({ where: { userId } }),
-    prisma.firstFossibSessionSubmission.findUnique({ where: { userId } }),
-    prisma.secondFossibSessionSubmission.findUnique({ where: { userId } }),
-  ]);
+  const user = await prisma.user.findUnique({
+    where: { id: userId },
+    select: { id: true, fullname: true, email: true, imgUrl: true, faculty: true, batch: true, lineId: true, whatsappNumber: true },
+  });
 
   if (!user) {
     return serverResponse({ success: false, message: "User tidak ditemukan", error: "USER_NOT_FOUND", status: 404 });
   }
+
+  const networking = await prisma.networkingSubmission.findUnique({ where: { userId } });
+  const fossib = await prisma.fossibSubmission.findUnique({ where: { userId } });
+  const insightHunting = await prisma.insightHuntingSubmission.findUnique({ where: { userId } });
+  const mentoring = await prisma.mentoringSubmission.findUnique({ where: { userId } });
+  const explorer = await prisma.explorerSubmission.findUnique({ where: { userId } });
+  const legacyMentoringVlog = await prisma.mentoringVlogSubmission.findUnique({ where: { userId } });
+  const legacyMentoringReflection = await prisma.mentoringReflection.findUnique({ where: { userId } });
+  const legacyFirstFossib = await prisma.firstFossibSessionSubmission.findUnique({ where: { userId } });
+  const legacySecondFossib = await prisma.secondFossibSessionSubmission.findUnique({ where: { userId } });
 
   const firstDocumentId = googleDocsResourceId(networking?.firstDocsUrl);
   const secondDocumentId = googleDocsResourceId(networking?.secondDocsUrl);

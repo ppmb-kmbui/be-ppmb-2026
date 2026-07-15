@@ -3,6 +3,40 @@ import { authenticateRequest } from "@/lib/auth";
 import serverResponse, { InvalidUserResponse, unauthorizedResponse } from "@/utils/serverResponse";
 import { NextRequest } from "next/server";
 
+type FriendRecord = {
+  id: number;
+  email: string;
+  fullname: string | null;
+  faculty: string | null;
+  imgUrl: string | null;
+  batch: number;
+  lineId: string | null;
+  whatsappNumber: string | null;
+  ConnectionReciever: { status: string }[];
+  ConnectionRequestReciever: { status: string }[];
+  ConnectionRequestSender: { status: string }[];
+};
+
+function serializeFriend({
+  ConnectionReciever,
+  ConnectionRequestReciever,
+  ConnectionRequestSender,
+  ...rest
+}: FriendRecord) {
+  let status = "not_connected";
+  if (ConnectionReciever.length) {
+    status = ConnectionReciever[0].status;
+  } else if (ConnectionRequestReciever.length) {
+    status = "menunggu_konfirmasi";
+  } else if (ConnectionRequestSender.length) {
+    status = "meminta_konfirmasi";
+  }
+  return {
+    ...rest,
+    status,
+  };
+}
+
 export async function GET(req: NextRequest) {
   let userId: number;
   try {
@@ -11,20 +45,50 @@ export async function GET(req: NextRequest) {
     return unauthorizedResponse();
   }
   const searchParams = req.nextUrl.searchParams;
+  const isPaginated = searchParams.has("page") || searchParams.has("limit");
+  const page = Math.max(1, Number(searchParams.get("page")) || 1);
+  const limit = Math.min(24, Math.max(1, Number(searchParams.get("limit")) || 12));
+  const paginationArgs: { skip?: number; take?: number } = isPaginated
+    ? { skip: (page - 1) * limit, take: limit }
+    : {};
+
   if (!searchParams.get("name")) {
     try{
-      const friends = await prisma.user.findMany({
-        where: {
-          id: {
-            not: {
-              equals: userId,
-            },
+      const where = {
+        id: {
+          not: {
+            equals: userId,
           },
         },
-        omit: {
-          password: true,
-        },
-        include: {
+        ...(isPaginated
+          ? {
+              isAdmin: false,
+              ConnectionReciever: {
+                none: {
+                  fromId: userId,
+                },
+              },
+              ConnectionRequestSender: {
+                none: {
+                  toId: userId,
+                },
+              },
+            }
+          : {}),
+      };
+      const total = isPaginated ? await prisma.user.count({ where }) : undefined;
+      const friends = await prisma.user.findMany({
+        where,
+        ...paginationArgs,
+        select: {
+          id: true,
+          email: true,
+          fullname: true,
+          faculty: true,
+          imgUrl: true,
+          batch: true,
+          lineId: true,
+          whatsappNumber: true,
           ConnectionReciever: {
             where: {
               fromId: userId,
@@ -50,31 +114,13 @@ export async function GET(req: NextRequest) {
             },
           },
         },
-      });
+      }) as FriendRecord[];
 
       const friends_response = {
-          friends: friends.map(
-            ({
-              ConnectionReciever,
-              ConnectionRequestReciever,
-              ConnectionRequestSender,
-              createdAt,
-              ...rest
-            }) => {
-              let status = "not_connected";
-              if (ConnectionReciever.length) {
-                status = ConnectionReciever[0].status;
-              } else if (ConnectionRequestReciever.length) {
-                status = "menunggu_konfirmasi";
-              } else if (ConnectionRequestSender.length) {
-                status = "meminta_konfirmasi";
-              }
-              return {
-                ...rest,
-                status,
-              };
-            }
-          ),
+          friends: friends.map(serializeFriend),
+          ...(isPaginated
+            ? { pagination: { page, limit, total: total ?? 0, totalPages: Math.ceil((total ?? 0) / limit) } }
+            : {}),
         }
       return serverResponse({success: true, message: "Friends Succesfully retrieved", data: friends_response ,status: 200})
     } catch {
@@ -86,34 +132,70 @@ export async function GET(req: NextRequest) {
   const person = await prisma.user.findMany({
     where: { fullname: { contains: name, mode: "insensitive" } },
     select: { id: true },
-  });
+  }) as { id: number }[];
   
   if (!person?.length) {
-    return serverResponse({success: true, message: "Friends Succesfully retrieved but it is empty", data: [] ,status: 200})
+    return serverResponse({
+      success: true,
+      message: "Friends Succesfully retrieved but it is empty",
+      data: isPaginated
+        ? { friends: [], pagination: { page, limit, total: 0, totalPages: 0 } }
+        : { friends: [] },
+      status: 200,
+    })
   }
 
   try {
-    const friends = await prisma.user.findMany({
-      where: {
-        AND: [
-          {
-            id: {
-              not: {
-                equals: userId,
-              },
+    const where = {
+      AND: [
+        {
+          id: {
+            not: {
+              equals: userId,
             },
           },
-          {
-            OR: person.map(({ id }) => ({
-              id,
-            })),
+        },
+        {
+          id: {
+            in: person.map(({ id }) => id),
           },
-        ],
-      },
-      omit: {
-        password: true,
-      },
-      include: {
+        },
+        ...(isPaginated
+          ? [
+              {
+                isAdmin: false,
+              },
+              {
+                ConnectionReciever: {
+                  none: {
+                    fromId: userId,
+                  },
+                },
+              },
+              {
+                ConnectionRequestSender: {
+                  none: {
+                    toId: userId,
+                  },
+                },
+              },
+            ]
+          : []),
+      ],
+    };
+    const total = isPaginated ? await prisma.user.count({ where }) : undefined;
+    const friends = await prisma.user.findMany({
+      where,
+      ...paginationArgs,
+      select: {
+        id: true,
+        email: true,
+        fullname: true,
+        faculty: true,
+        imgUrl: true,
+        batch: true,
+        lineId: true,
+        whatsappNumber: true,
         ConnectionReciever: {
           where: {
             fromId: userId,
@@ -139,30 +221,12 @@ export async function GET(req: NextRequest) {
           },
         },
       },
-    });
+    }) as FriendRecord[];
     const friends_response = {
-        friends: friends.map(
-          ({
-            ConnectionReciever,
-            ConnectionRequestReciever,
-            ConnectionRequestSender,
-            createdAt,
-            ...rest
-          }) => {
-            let status = "not_connected";
-            if (ConnectionReciever.length) {
-              status = ConnectionReciever[0].status;
-            } else if (ConnectionRequestReciever.length) {
-              status = "menunggu_konfirmasi";
-            } else if (ConnectionRequestSender.length) {
-              status = "meminta_konfirmasi";
-            }
-            return {
-              ...rest,
-              status,
-            };
-          }
-        ),
+        friends: friends.map(serializeFriend),
+        ...(isPaginated
+          ? { pagination: { page, limit, total: total ?? 0, totalPages: Math.ceil((total ?? 0) / limit) } }
+          : {}),
       };
     return serverResponse({success: true, message: `Friends Succesfully retrieved with name ${name}`, data: friends_response ,status: 200})
   } catch {

@@ -1,7 +1,6 @@
 import { NextRequest } from "next/server";
 import { hash } from "bcrypt";
 import { prisma } from "@/lib/prisma";
-import { Prisma } from "@/generated/prisma/client";
 import { z, ZodError} from "zod";
 import serverResponse from "@/utils/serverResponse";
 import { isImageUrl } from "@/utils/taskSubmission";
@@ -25,6 +24,15 @@ const UserSchema = z.object({
   path: ["confirmPassword"],
   message: "Konfirmasi password tidak sama",
 });
+
+function isPrismaKnownRequestError(error: unknown): error is { code: string } {
+  return (
+    typeof error === "object" &&
+    error !== null &&
+    "code" in error &&
+    typeof (error as { code?: unknown }).code === "string"
+  );
+}
 
 export async function POST(req: NextRequest) {
   let body: unknown;
@@ -59,15 +67,13 @@ export async function POST(req: NextRequest) {
       });
     }
 
-    if (error instanceof Prisma.PrismaClientKnownRequestError) {
-      if (error.code === "P2002") {
-        return serverResponse({
-          success: false,
-          message: "Email sudah digunakan",
-          error: "DUPLICATE_EMAIL",
-          status: 409,
-        });
-      }
+    if (isPrismaKnownRequestError(error) && error.code === "P2002") {
+      return serverResponse({
+        success: false,
+        message: "Email sudah digunakan",
+        error: "DUPLICATE_EMAIL",
+        status: 409,
+      });
     }
 
     console.error("Registrasi user gagal", error);

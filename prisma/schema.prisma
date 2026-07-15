@@ -34,6 +34,8 @@ model User {
   ExplorerSubmission            ExplorerSubmission[]
   MentoringVlogSubmission       MentoringVlogSubmission[]
   MentoringReflection           MentoringReflection[]
+
+  @@index([isAdmin], map: "users_is_admin_idx")
   @@map("users")
 }
 
@@ -48,6 +50,7 @@ model Connection {
   updated_at DateTime @default(now()) @updatedAt
 
   @@unique([fromId, toId])
+  @@index([toId], map: "connections_to_id_idx")
   @@map("connections")
 }
 
@@ -62,6 +65,7 @@ model ConnectionRequest {
   updated_at DateTime @default(now()) @updatedAt
 
   @@unique([fromId, toId])
+  @@index([toId], map: "connection_requests_to_id_idx")
   @@map("connection_requests")
 }
 

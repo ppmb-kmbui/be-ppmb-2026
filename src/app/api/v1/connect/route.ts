@@ -15,16 +15,18 @@ export async function GET(req: NextRequest) {
       where: {
         fromId: userId,
       },
-      include: {
+      select: {
+        id: true,
+        fromId: true,
+        toId: true,
+        status: true,
+        created_at: true,
+        updated_at: true,
         to: {
-          omit: {
-            password: true,
-          },
+          select: { id: true, email: true, fullname: true, faculty: true, imgUrl: true, batch: true, lineId: true, whatsappNumber: true },
         },
         from: {
-          omit: {
-            password: true,
-          },
+          select: { id: true, email: true, fullname: true, faculty: true, imgUrl: true, batch: true, lineId: true, whatsappNumber: true },
         },
       },
     });
