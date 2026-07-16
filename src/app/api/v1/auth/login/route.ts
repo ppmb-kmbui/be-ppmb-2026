@@ -90,11 +90,14 @@ export async function POST(req: NextRequest) {
       });
     }
 
+    const tokenMaxAgeSeconds = user.isAdmin ? 60 * 60 : 60 * 60 * 4;
+    const tokenExpiresIn = user.isAdmin ? "1h" : "4h";
+
     const token = await new jwt.SignJWT({ is_admin: user.isAdmin })
       .setSubject(String(user.id))
       .setProtectedHeader({ alg: "HS256" })
       .setIssuedAt()
-      .setExpirationTime("7d")
+      .setExpirationTime(tokenExpiresIn)
       .sign(getJwtSecret());
 
     const response = serverResponse({
@@ -108,7 +111,7 @@ export async function POST(req: NextRequest) {
       sameSite: "lax",
       secure: process.env.NODE_ENV === "production",
       path: "/",
-      maxAge: 60 * 60 * 24 * 7,
+      maxAge: tokenMaxAgeSeconds,
     });
     return response;
   } catch (error) {
