@@ -142,7 +142,82 @@ async function seedUsers(passwordHash: string) {
     },
   });
 
-  return { admin, nala, bima, citra, darren };
+  const arya = await prisma.user.upsert({
+    where: { email: "arya.pratama.2025@example.com" },
+    update: {
+      fullname: "Arya Pratama",
+      imgUrl: `${SEED_IMAGE}?text=Arya`,
+      password: passwordHash,
+      faculty: "FIB",
+      isAdmin: false,
+      batch: 2025,
+      lineId: "aryapratama25",
+      whatsappNumber: "6281255555555",
+    },
+    create: {
+      email: "arya.pratama.2025@example.com",
+      fullname: "Arya Pratama",
+      imgUrl: `${SEED_IMAGE}?text=Arya`,
+      password: passwordHash,
+      faculty: "FIB",
+      isAdmin: false,
+      batch: 2025,
+      lineId: "aryapratama25",
+      whatsappNumber: "6281255555555",
+    },
+  });
+
+  const kusuma = await prisma.user.upsert({
+    where: { email: "kusuma.dewi.2024@example.com" },
+    update: {
+      fullname: "Kusuma Dewi",
+      imgUrl: `${SEED_IMAGE}?text=Kusuma`,
+      password: passwordHash,
+      faculty: "FKM",
+      isAdmin: false,
+      batch: 2024,
+      lineId: "kusumadewi24",
+      whatsappNumber: "6281266666666",
+    },
+    create: {
+      email: "kusuma.dewi.2024@example.com",
+      fullname: "Kusuma Dewi",
+      imgUrl: `${SEED_IMAGE}?text=Kusuma`,
+      password: passwordHash,
+      faculty: "FKM",
+      isAdmin: false,
+      batch: 2024,
+      lineId: "kusumadewi24",
+      whatsappNumber: "6281266666666",
+    },
+  });
+
+  const metta = await prisma.user.upsert({
+    where: { email: "metta.sari.2023@example.com" },
+    update: {
+      fullname: "Metta Sari",
+      imgUrl: `${SEED_IMAGE}?text=Metta`,
+      password: passwordHash,
+      faculty: "FIK",
+      isAdmin: false,
+      batch: 2023,
+      lineId: "mettasari23",
+      whatsappNumber: "6281277777777",
+    },
+    create: {
+      email: "metta.sari.2023@example.com",
+      fullname: "Metta Sari",
+      imgUrl: `${SEED_IMAGE}?text=Metta`,
+      password: passwordHash,
+      faculty: "FIK",
+      isAdmin: false,
+      batch: 2023,
+      lineId: "mettasari23",
+      whatsappNumber: "6281277777777",
+    },
+  });
+
+  return { admin, nala, bima, citra, darren, arya, kusuma, metta };
 }
 
 async function ensureConnection(fromId: number, toId: number, status = "accepted") {
@@ -184,31 +259,88 @@ async function seedConnections(users: Awaited<ReturnType<typeof seedUsers>>) {
   await ensureConnection(users.bima.id, users.nala.id);
   await ensureConnection(users.citra.id, users.darren.id);
   await ensureConnection(users.darren.id, users.citra.id);
+  await ensureConnection(users.nala.id, users.arya.id);
+  await ensureConnection(users.arya.id, users.nala.id);
+  await ensureConnection(users.nala.id, users.kusuma.id, "done");
+  await ensureConnection(users.kusuma.id, users.nala.id, "done");
+  await ensureConnection(users.nala.id, users.metta.id);
+  await ensureConnection(users.metta.id, users.nala.id);
   await ensureConnectionRequest(users.citra.id, users.nala.id);
 }
 
 async function seedNetworkingSubmissions(users: Awaited<ReturnType<typeof seedUsers>>) {
+  const questions = await prisma.networkingQuestion.findMany({
+    where: { isActive: true },
+    orderBy: { position: "asc" },
+  });
+  const fixedQuestions = questions.filter(({ isCustom }) => !isCustom);
+  const customQuestion = questions.find(({ isCustom }) => isCustom);
+
+  if (fixedQuestions.length !== 3 || !customQuestion) {
+    throw new Error("Katalog pertanyaan Networking belum dimigrasikan dengan benar.");
+  }
+
   const submissions = [
     {
       userId: users.nala.id,
-      firstDocsUrl: "https://docs.google.com/document/d/seed-networking-nala-1/edit",
-      secondDocsUrl: "https://docs.google.com/document/d/seed-networking-nala-2/edit",
+      friendId: users.bima.id,
+      label: "Nala+Bima",
+    },
+    {
+      userId: users.nala.id,
+      friendId: users.arya.id,
+      label: "Nala+Arya",
+    },
+    {
+      userId: users.nala.id,
+      friendId: users.kusuma.id,
+      label: "Nala+Kusuma",
+    },
+    {
+      userId: users.nala.id,
+      friendId: users.metta.id,
+      label: "Nala+Metta",
     },
     {
       userId: users.bima.id,
-      firstDocsUrl: "https://docs.google.com/document/d/seed-networking-bima-1/edit",
-      secondDocsUrl: "https://docs.google.com/document/d/seed-networking-bima-2/edit",
+      friendId: users.nala.id,
+      label: "Bima+Nala",
     },
   ];
 
   for (const submission of submissions) {
-    await prisma.networkingSubmission.upsert({
-      where: { userId: submission.userId },
-      update: {
-        firstDocsUrl: submission.firstDocsUrl,
-        secondDocsUrl: submission.secondDocsUrl,
+    const savedSubmission = await prisma.networkingSubmission.upsert({
+      where: {
+        userId_friendId: {
+          userId: submission.userId,
+          friendId: submission.friendId,
+        },
       },
-      create: submission,
+      update: { photoUrl: `${SEED_IMAGE}?text=${encodeURIComponent(submission.label)}` },
+      create: {
+        userId: submission.userId,
+        friendId: submission.friendId,
+        photoUrl: `${SEED_IMAGE}?text=${encodeURIComponent(submission.label)}`,
+      },
+    });
+
+    await prisma.networkingAnswer.deleteMany({
+      where: { submissionId: savedSubmission.id },
+    });
+    await prisma.networkingAnswer.createMany({
+      data: [
+        ...fixedQuestions.map((question) => ({
+          submissionId: savedSubmission.id,
+          questionId: question.id,
+          answer: `Jawaban seed untuk: ${question.prompt}`,
+        })),
+        {
+          submissionId: savedSubmission.id,
+          questionId: customQuestion.id,
+          customQuestion: "Apa kegiatan kampus yang paling ingin kamu ikuti?",
+          answer: "Saya ingin aktif di kegiatan yang membantu saya berkembang dan mengenal teman baru.",
+        },
+      ],
     });
   }
 }

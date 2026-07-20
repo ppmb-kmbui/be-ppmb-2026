@@ -1,8 +1,8 @@
 import { authenticateRequest } from "@/lib/auth";
+import { getNetworkingOverview } from "@/lib/networking";
 import { prisma } from "@/lib/prisma";
 import serverResponse, { unauthorizedResponse } from "@/utils/serverResponse";
 import {
-  googleDocsResourceId,
   isGoogleDriveResourceUrl,
   isImageUrl,
   isPdfUrl,
@@ -16,11 +16,6 @@ const percentage = (completed: number, required: number) =>
 const hasValue = (value: string | null | undefined) =>
   typeof value === "string" && value.trim().length > 0;
 
-// Temporary response keys for the current frontend. They no longer control
-// task requirements and can be removed after the frontend adopts the new API.
-const LEGACY_NETWORKING_BATCHES = [2026, 2025, 2024, 2023] as const;
-const LEGACY_SENIOR_BATCHES = [2025, 2024, 2023] as const;
-
 export async function GET(req: NextRequest) {
   let userId: number;
   try {
@@ -29,20 +24,25 @@ export async function GET(req: NextRequest) {
     return unauthorizedResponse();
   }
 
-  const networking = await prisma.networkingSubmission.findUnique({ where: { userId } });
-  const fossib = await prisma.fossibSubmission.findUnique({ where: { userId } });
-  const insightHunting = await prisma.insightHuntingSubmission.findUnique({ where: { userId } });
-  const mentoring = await prisma.mentoringSubmission.findUnique({ where: { userId } });
-  // Kept for legacy visibility only. Neither legacy model contributes to progress.
-  const legacyMentoringVlog = await prisma.mentoringVlogSubmission.findUnique({ where: { userId } });
-  const legacyMentoringReflection = await prisma.mentoringReflection.findUnique({ where: { userId } });
-  const explorer = await prisma.explorerSubmission.findUnique({ where: { userId } });
+  const [
+    networking,
+    fossib,
+    insightHunting,
+    mentoring,
+    legacyMentoringVlog,
+    legacyMentoringReflection,
+    explorer,
+  ] = await Promise.all([
+    getNetworkingOverview(userId),
+    prisma.fossibSubmission.findUnique({ where: { userId } }),
+    prisma.insightHuntingSubmission.findUnique({ where: { userId } }),
+    prisma.mentoringSubmission.findUnique({ where: { userId } }),
+    // Kept for legacy visibility only. Neither legacy model contributes to progress.
+    prisma.mentoringVlogSubmission.findUnique({ where: { userId } }),
+    prisma.mentoringReflection.findUnique({ where: { userId } }),
+    prisma.explorerSubmission.findUnique({ where: { userId } }),
+  ]);
 
-  const firstDocumentId = googleDocsResourceId(networking?.firstDocsUrl);
-  const secondDocumentId = googleDocsResourceId(networking?.secondDocsUrl);
-  const networkingCompleted = Number(firstDocumentId !== null) + Number(
-    secondDocumentId !== null && secondDocumentId !== firstDocumentId,
-  );
   const explorerCompleted = Number(
     hasValue(explorer?.activityName) && isImageUrl(explorer?.img_url ?? ""),
   );
@@ -54,31 +54,36 @@ export async function GET(req: NextRequest) {
   );
   const insightCompleted = Number(isPdfUrl(insightHunting?.file_url ?? ""));
 
-  // These compatibility objects are still read by the current frontend. They no
-  // longer represent the deleted per-batch networking quota model.
+  // Compatibility objects retain the legacy progress/min keys while reflecting
+  // the canonical 2026/2025/2024/2023 quota contract.
   const facultyProgress = {
     SAINTEK: { progress: 0, min: 0 },
     SOSHUM: { progress: 0, min: 0 },
     RIK_VOK: { progress: 0, min: 0 },
     OTHER: { progress: 0, min: 0 },
   };
-  const progressByBatch: Record<string, { progress: number; min: number }> = Object.fromEntries(
-    LEGACY_NETWORKING_BATCHES.map((batch, index) => [
-      String(batch),
-      { progress: index === 0 ? networkingCompleted : 0, min: index === 0 ? 2 : 0 },
+  const progressByBatch = Object.fromEntries(
+    Object.entries(networking.progress.byBatch).map(([batch, item]) => [
+      batch,
+      { progress: item.completed, min: item.required, ...item },
     ]),
   );
-  const seniorProgress: Record<string, { progress: number; min: number }> = Object.fromEntries(
-    LEGACY_SENIOR_BATCHES.map((batch) => [String(batch), { progress: 0, min: 0 }]),
+  const seniorProgress = Object.fromEntries(
+    ["2025", "2024", "2023"].map((batch) => [batch, progressByBatch[batch]]),
   );
 
   return serverResponse({
     success: true,
     message: "Berhasil mendapatkan tasks user",
     data: {
-      networkingSubmission: networking,
-      networkingAngkatan: { progress: facultyProgress, byBatch: progressByBatch, min: 2 },
-      networkingKating: { progress: seniorProgress, min: 0 },
+      networkingSubmission: networking.submissions,
+      networkingAngkatan: {
+        progress: progressByBatch["2026"].progress,
+        faculty: facultyProgress,
+        byBatch: progressByBatch,
+        min: progressByBatch["2026"].min,
+      },
+      networkingKating: { progress: seniorProgress, min: 8 },
       kmbuiExplorerDone: explorerCompleted === 1,
       firstFossibDone: fossibCompleted === 1,
       secondFossibDone: fossibCompleted === 1,
@@ -89,7 +94,7 @@ export async function GET(req: NextRequest) {
       mentoringVlogDone: !!legacyMentoringVlog,
       mentoringReflectionDone: !!legacyMentoringReflection,
       cards: {
-        networking: { completed: networkingCompleted, required: 2, percentage: percentage(networkingCompleted, 2) },
+        networking: networking.progress,
         explorer: { completed: explorerCompleted, required: 1, percentage: percentage(explorerCompleted, 1) },
         mentoring: { completed: mentoringCompleted, required: 1, percentage: percentage(mentoringCompleted, 1) },
         fosterSiblings: { completed: fossibCompleted, required: 1, percentage: percentage(fossibCompleted, 1) },

@@ -2,11 +2,18 @@ import { prisma } from "@/lib/prisma";
 import { authenticateRequest } from "@/lib/auth";
 import { NextRequest } from "next/server";
 import serverResponse, { InvalidUserResponse, unauthorizedResponse } from "@/utils/serverResponse";
+import { isImageUrl } from "@/utils/taskSubmission";
 import { z } from "zod";
 import { FacultySchema } from "@/lib/faculty";
 
 const UpdateProfileSchema = z.object({
-  imgUrl: z.string().trim().min(1).optional(),
+  imgUrl: z
+    .string()
+    .trim()
+    .url("URL foto profil tidak valid")
+    .max(2048, "URL foto profil terlalu panjang")
+    .refine(isImageUrl, "Foto profil harus berupa URL gambar HTTPS")
+    .optional(),
   fullname: z.string().trim().min(3).optional(),
   lineId: z.string().trim().min(2).optional(),
   whatsappNumber: z.string().trim().regex(/^(?:\+62|62|0)8\d{7,12}$/).optional(),
@@ -190,7 +197,7 @@ export async function PUT(req: NextRequest) {
  *                 example: "081234567890"
  *               faculty:
  *                 type: string
- *                 enum: [Fasilkom, FKM, Fisip, FKG, FK, FMIPA, FT, Vokasi, FH, FPsi, FIA, FF, FIK, FEB, Sastra Mesin]
+ *                 enum: [Fasilkom, FKM, Fisip, FKG, FK, FMIPA, FT, Vokasi, FH, FPsi, FIA, FF, FIK, FEB, FIB, Sastra Mesin]
  *                 example: Fasilkom
  *     responses:
  *       200:

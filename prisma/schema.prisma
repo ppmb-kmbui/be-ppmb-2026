@@ -20,7 +20,8 @@ model User {
   batch                         Int                             @default(2026)
   lineId                        String?                         @map("line_id")
   whatsappNumber                String?                         @map("whatsapp_number")
-  NetworkingSubmission          NetworkingSubmission?
+  NetworkingSubmissions         NetworkingSubmission[]          @relation("NetworkingSubmissionOwner")
+  NetworkingTargets             NetworkingSubmission[]          @relation("NetworkingSubmissionFriend")
   FossibSubmission              FossibSubmission?
   MentoringSubmission           MentoringSubmission?
   ConnectionRequestSender       ConnectionRequest[]             @relation("from")
@@ -70,15 +71,46 @@ model ConnectionRequest {
 }
 
 model NetworkingSubmission {
-  id            Int      @id @default(autoincrement())
-  user          User     @relation(fields: [userId], references: [id], onDelete: Cascade)
-  userId        Int      @unique @map("user_id")
-  firstDocsUrl  String?  @map("first_docs_url")
-  secondDocsUrl String?  @map("second_docs_url")
-  createdAt     DateTime @default(now()) @map("created_at")
-  updatedAt     DateTime @default(now()) @updatedAt @map("updated_at")
+  id        Int                @id @default(autoincrement())
+  user      User               @relation("NetworkingSubmissionOwner", fields: [userId], references: [id], onDelete: Cascade)
+  userId    Int                @map("user_id")
+  friend    User               @relation("NetworkingSubmissionFriend", fields: [friendId], references: [id], onDelete: Cascade)
+  friendId  Int                @map("friend_id")
+  photoUrl  String             @map("photo_url")
+  answers   NetworkingAnswer[]
+  createdAt DateTime           @default(now()) @map("created_at")
+  updatedAt DateTime           @default(now()) @updatedAt @map("updated_at")
 
+  @@unique([userId, friendId])
+  @@index([friendId], map: "networking_submissions_friend_id_idx")
   @@map("networking_submissions")
+}
+
+model NetworkingQuestion {
+  id       Int                @id @default(autoincrement())
+  code     String             @unique
+  prompt   String
+  position Int                @unique
+  isCustom Boolean            @default(false) @map("is_custom")
+  isActive Boolean            @default(true) @map("is_active")
+  answers  NetworkingAnswer[]
+
+  @@map("networking_questions")
+}
+
+model NetworkingAnswer {
+  submission     NetworkingSubmission @relation(fields: [submissionId], references: [id], onDelete: Cascade)
+  submissionId   Int                  @map("submission_id")
+  question       NetworkingQuestion   @relation(fields: [questionId], references: [id], onDelete: Restrict)
+  questionId     Int                  @map("question_id")
+  answer         String
+  customQuestion String?              @map("custom_question")
+  createdAt      DateTime             @default(now()) @map("created_at")
+  updatedAt      DateTime             @default(now()) @updatedAt @map("updated_at")
+
+  @@id([submissionId, questionId])
+  @@index([questionId], map: "networking_answers_question_id_idx")
+  @@map("networking_answers")
 }
 
 model Quotes {
@@ -93,36 +125,36 @@ model Quotes {
 }
 
 model FirstFossibSessionSubmission {
-  id                      Int                       @id @default(autoincrement())
-  user                    User                      @relation(fields: [userId], references: [id])
-  file_url                String?                   @map("file_url")
-  photo_url               String?                   @map("photo_url")
-  description             String?
-  userId                  Int                       @unique
+  id          Int     @id @default(autoincrement())
+  user        User    @relation(fields: [userId], references: [id])
+  file_url    String? @map("file_url")
+  photo_url   String? @map("photo_url")
+  description String?
+  userId      Int     @unique
 }
 
 model SecondFossibSessionSubmission {
-  id                       Int                        @id @default(autoincrement())
-  user                     User                       @relation(fields: [userId], references: [id])
-  file_url                 String?                    @map("file_url")
-  photo_url                String?                    @map("photo_url")
-  description              String?
-  userId                   Int                        @unique
+  id          Int     @id @default(autoincrement())
+  user        User    @relation(fields: [userId], references: [id])
+  file_url    String? @map("file_url")
+  photo_url   String? @map("photo_url")
+  description String?
+  userId      Int     @unique
 }
 
 model InsightHuntingSubmission {
-  id                            Int                             @id @default(autoincrement())
-  user                          User                            @relation(fields: [userId], references: [id])
-  file_url                      String                          @map("file_url")
-  userId                        Int                             @unique
+  id       Int    @id @default(autoincrement())
+  user     User   @relation(fields: [userId], references: [id])
+  file_url String @map("file_url")
+  userId   Int    @unique
 }
 
 model ExplorerSubmission {
-  id                      Int                       @id @default(autoincrement())
-  user                    User                      @relation(fields: [userId], references: [id])
-  activityName            String?                   @map("activity_name")
-  img_url                 String                    @map("img_url")
-  userId                  Int                       @unique
+  id           Int     @id @default(autoincrement())
+  user         User    @relation(fields: [userId], references: [id])
+  activityName String? @map("activity_name")
+  img_url      String  @map("img_url")
+  userId       Int     @unique
 }
 
 model FossibSubmission {
@@ -149,19 +181,19 @@ model MentoringSubmission {
 }
 
 model MentoringReflection {
-  id                       Int                        @id @default(autoincrement())
-  user                     User                       @relation(fields: [userId], references: [id])
-  file_url                 String?                    @map("file_url")
-  description              String?
-  userId                   Int                        @unique
+  id          Int     @id @default(autoincrement())
+  user        User    @relation(fields: [userId], references: [id])
+  file_url    String? @map("file_url")
+  description String?
+  userId      Int     @unique
 }
 
 model MentoringVlogSubmission {
-  id                           Int                            @id @default(autoincrement())
-  user                         User                           @relation(fields: [userId], references: [id])
-  file_url                     String                         @map("file_url")
-  description                  String?
-  userId                       Int                            @unique
+  id          Int     @id @default(autoincrement())
+  user        User    @relation(fields: [userId], references: [id])
+  file_url    String  @map("file_url")
+  description String?
+  userId      Int     @unique
 }
 
 model TimelineEvent {

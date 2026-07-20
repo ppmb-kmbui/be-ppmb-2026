@@ -22,11 +22,11 @@ Untuk foto dan PDF:
 
 Frontend unsigned upload membutuhkan `NEXT_PUBLIC_CLOUDINARY_CLOUD_NAME` dan `NEXT_PUBLIC_CLOUDINARY_UPLOAD_PRESET`. Jangan pernah menaruh `CLOUDINARY_API_SECRET` di frontend.
 
-Link Google Docs dan Google Drive tidak diunggah ke backend. Peserta menempelkan link share, lalu frontend mengirim link tersebut sebagai JSON.
+Link Google Drive untuk Mentoring tidak diunggah ke backend. Peserta menempelkan link share, lalu frontend mengirim link tersebut sebagai JSON. Networking tidak lagi memakai link Google Docs.
 
 ## Deadline submission
 
-Setiap `POST` submission memeriksa waktu server sebelum memvalidasi payload atau menyimpan data. `POST` yang sama dipakai untuk submission pertama dan update. Endpoint `GET` tetap dapat digunakan setelah deadline.
+Setiap endpoint mutasi submission (`POST` atau `PUT`) memeriksa waktu server sebelum memvalidasi payload atau menyimpan data. Endpoint `GET` tetap dapat digunakan setelah deadline.
 
 Deadline dikonfigurasi melalui environment variable berikut:
 
@@ -53,26 +53,44 @@ Deadline PPMB 2026:
 Endpoint:
 
 - `GET /api/v1/tasks/networking`
-- `POST /api/v1/tasks/networking`
+- `GET /api/v1/tasks/networking/{friendId}`
+- `PUT /api/v1/tasks/networking/{friendId}`
 
-Payload canonical:
+Networking hanya dapat diisi untuk teman yang sudah saling terhubung. Backend memverifikasi dua row koneksi arah pengguna→teman dan teman→pengguna dengan status `accepted` (atau status legacy `done`). Target harus peserta non-admin dari angkatan 2023, 2024, 2025, atau 2026. Submission A→B dan B→A berdiri sendiri.
+
+`GET /api/v1/tasks/networking` mengembalikan:
+
+- katalog tiga pertanyaan tetap dan satu pertanyaan bebas;
+- daftar teman eligible beserta status selesai;
+- seluruh submission pengguna; dan
+- progress total serta progress per angkatan.
+
+Payload canonical `PUT`:
 
 ```json
 {
-  "first_docs_url": "https://docs.google.com/document/d/.../edit",
-  "second_docs_url": "https://docs.google.com/document/d/.../edit"
+  "photo_url": "https://res.cloudinary.com/.../networking.jpg",
+  "answers": [
+    { "question_id": 1, "answer": "..." },
+    { "question_id": 2, "answer": "..." },
+    { "question_id": 3, "answer": "..." }
+  ],
+  "custom_question": "Pertanyaan buatan peserta",
+  "custom_answer": "Jawaban teman"
 }
 ```
 
-Kedua field harus mengarah ke dua dokumen Google Docs yang berbeda. Homepage Docs, Sheets, Slides, dan link dokumen yang sama pada kedua field akan ditolak. POST boleh mengirim salah satu field untuk menyimpan progres parsial tanpa menghapus field lainnya.
+Semua field wajib terisi. `photo_url` harus berupa URL gambar HTTPS. Array `answers` harus berisi tepat tiga ID pertanyaan tetap yang sedang aktif tanpa duplikasi; pertanyaan bebas disimpan sebagai jawaban keempat yang ternormalisasi. `PUT` membuat submission baru atau mengganti seluruh jawaban submission yang sudah ada secara atomik, selama deadline belum lewat.
 
 Progress Networking:
 
-- belum ada link: `completed: 0`, `required: 2`;
-- satu link: `completed: 1`, `required: 2`;
-- dua link: `completed: 2`, `required: 2`.
+- angkatan 2026: 10 teman;
+- angkatan 2025: 4 teman;
+- angkatan 2024: 2 teman;
+- angkatan 2023: 2 teman;
+- total: `required: 18`.
 
-Networking tidak lagi memakai quota angkatan, target user, PDF, atau endpoint `networking-maba`/`networking-kating`.
+Submission baru dihitung selesai jika foto, tiga jawaban tetap, pertanyaan bebas, dan jawaban bebas lengkap. Pengguna boleh mewawancarai lebih banyak teman, tetapi progress setiap angkatan dibatasi pada kuotanya. Tabel dua Google Docs sebelumnya hanya berisi dummy data dan diganti oleh tabel pertanyaan/submission/jawaban baru; tabel lain tidak disentuh.
 
 ## KMBUI Explorer
 
@@ -156,10 +174,10 @@ Backend memvalidasi bentuk URL, bukan isi byte file. Tipe file sebenarnya harus 
 
 | Card | Completed | Required |
 |---|---:|---:|
-| Networking | 0-2 | 2 |
+| Networking | 0-18 | 18 |
 | KMBUI Explorer | 0-1 | 1 |
 | Mentoring | 0-1 | 1 |
 | FOSSIB | 0-1 | 1 |
 | Insight Hunting | 0-1 | 1 |
 
-Endpoint tersebut masih mengembalikan beberapa field compatibility yang dibaca frontend saat ini, seperti `networkingAngkatan`, `networkingKating`, `firstFossibDone`, `secondFossibDone`, dan `mentoringReflectionDone`. Field compatibility bukan kontrak quota atau tugas baru; gunakan `cards` dan endpoint canonical di atas untuk integrasi baru.
+Endpoint tersebut masih mengembalikan beberapa field compatibility yang dibaca frontend saat ini, seperti `networkingAngkatan`, `networkingKating`, `firstFossibDone`, `secondFossibDone`, dan `mentoringReflectionDone`. Field Networking compatibility sekarang mengikuti quota 10/4/2/2; gunakan `cards` dan endpoint canonical di atas untuk integrasi baru.

@@ -1,8 +1,13 @@
 import { authenticateRequest } from "@/lib/auth";
+import {
+  NETWORKING_REQUIRED_TOTAL,
+  NETWORKING_CONNECTION_STATUSES,
+  calculateNetworkingProgressFromBatches,
+  isValidNetworkingQuestionCatalog,
+} from "@/lib/networking";
 import { prisma } from "@/lib/prisma";
 import serverResponse, { forbiddenResponse, unauthorizedResponse } from "@/utils/serverResponse";
 import {
-  googleDocsResourceId,
   isGoogleDriveResourceUrl,
   isImageUrl,
   isPdfUrl,
@@ -17,7 +22,18 @@ type AdminUserListRecord = {
   imgUrl: string | null;
   faculty: string | null;
   batch: number;
-  NetworkingSubmission: { firstDocsUrl: string | null; secondDocsUrl: string | null } | null;
+  ConnectionSender: { toId: number }[];
+  ConnectionReciever: { fromId: number }[];
+  NetworkingSubmissions: {
+    photoUrl: string;
+    friend: { id: number; batch: number };
+    answers: {
+      questionId: number;
+      answer: string;
+      customQuestion: string | null;
+      question: { isCustom: boolean; isActive: boolean };
+    }[];
+  }[];
   ExplorerSubmission: { activityName: string | null; img_url: string }[];
   MentoringSubmission: { gdriveUrl: string } | null;
   FossibSubmission: { fileUrl: string; photoUrl: string } | null;
@@ -40,48 +56,106 @@ export async function GET(req: NextRequest) {
     ...(search ? { fullname: { contains: search, mode: "insensitive" as const } } : {}),
   };
 
-  const total = await prisma.user.count({ where });
-  const users = await prisma.user.findMany({
-    where,
-    skip: (page - 1) * limit,
-    take: limit,
-    orderBy: { fullname: "asc" },
-    select: {
-      id: true, fullname: true, email: true, imgUrl: true, faculty: true, batch: true,
-      NetworkingSubmission: {
-        select: { firstDocsUrl: true, secondDocsUrl: true },
+  const [total, activeQuestions, users] = await Promise.all([
+    prisma.user.count({ where }),
+    prisma.networkingQuestion.findMany({
+      where: { isActive: true },
+      select: { id: true, isCustom: true },
+    }),
+    prisma.user.findMany({
+      where,
+      skip: (page - 1) * limit,
+      take: limit,
+      orderBy: { fullname: "asc" },
+      select: {
+        id: true, fullname: true, email: true, imgUrl: true, faculty: true, batch: true,
+        ConnectionSender: {
+          where: { status: { in: [...NETWORKING_CONNECTION_STATUSES] } },
+          select: { toId: true },
+        },
+        ConnectionReciever: {
+          where: { status: { in: [...NETWORKING_CONNECTION_STATUSES] } },
+          select: { fromId: true },
+        },
+        NetworkingSubmissions: {
+          select: {
+            photoUrl: true,
+            friend: { select: { id: true, batch: true } },
+            answers: {
+              select: {
+                questionId: true,
+                answer: true,
+                customQuestion: true,
+                question: { select: { isCustom: true, isActive: true } },
+              },
+            },
+          },
+        },
+        ExplorerSubmission: {
+          select: { activityName: true, img_url: true },
+        },
+        MentoringSubmission: {
+          select: { gdriveUrl: true },
+        },
+        FossibSubmission: {
+          select: { fileUrl: true, photoUrl: true },
+        },
+        InsightHuntingSubmission: {
+          select: { file_url: true },
+        },
       },
-      ExplorerSubmission: {
-        select: { activityName: true, img_url: true },
-      },
-      MentoringSubmission: {
-        select: { gdriveUrl: true },
-      },
-      FossibSubmission: {
-        select: { fileUrl: true, photoUrl: true },
-      },
-      InsightHuntingSubmission: {
-        select: { file_url: true },
-      },
-    },
-  }) as AdminUserListRecord[];
+    }),
+  ]) as [number, { id: number; isCustom: boolean }[], AdminUserListRecord[]];
+  const validQuestionCatalog = isValidNetworkingQuestionCatalog(activeQuestions);
+  const activeQuestionIds = new Set(
+    validQuestionCatalog ? activeQuestions.map(({ id }) => id) : [],
+  );
 
   const hasValue = (value: string | null | undefined) =>
     typeof value === "string" && value.trim().length > 0;
 
   const data = users.map((userRecord) => {
     const {
-      NetworkingSubmission,
+      NetworkingSubmissions,
+      ConnectionSender,
+      ConnectionReciever,
       ExplorerSubmission,
       MentoringSubmission,
       FossibSubmission,
       InsightHuntingSubmission,
       ...user
     } = userRecord;
-    const firstDocumentId = googleDocsResourceId(NetworkingSubmission?.firstDocsUrl);
-    const secondDocumentId = googleDocsResourceId(NetworkingSubmission?.secondDocsUrl);
-    const networkingCompleted = Number(firstDocumentId !== null) + Number(
-      secondDocumentId !== null && secondDocumentId !== firstDocumentId,
+    const incomingFriendIds = new Set(
+      ConnectionReciever.map(({ fromId }) => fromId),
+    );
+    const mutualFriendIds = new Set(
+      ConnectionSender
+        .map(({ toId }) => toId)
+        .filter((friendId) => incomingFriendIds.has(friendId)),
+    );
+    const completedNetworkingBatches = NetworkingSubmissions
+      .filter((submission) => {
+        if (
+          !mutualFriendIds.has(submission.friend.id) ||
+          !validQuestionCatalog ||
+          !isImageUrl(submission.photoUrl)
+        ) return false;
+        const answersByQuestion = new Map(
+          submission.answers
+            .filter(({ question }) => question.isActive)
+            .map((answer) => [answer.questionId, answer]),
+        );
+        return [...activeQuestionIds].every((questionId) => {
+          const answer = answersByQuestion.get(questionId);
+          return Boolean(
+            answer?.answer.trim() &&
+            (!answer.question.isCustom || answer.customQuestion?.trim()),
+          );
+        });
+      })
+      .map(({ friend }) => friend.batch);
+    const networkingProgress = calculateNetworkingProgressFromBatches(
+      completedNetworkingBatches,
     );
     const explorerCompleted = Number(ExplorerSubmission.some(
       (submission) => hasValue(submission.activityName) && isImageUrl(submission.img_url),
@@ -96,12 +170,17 @@ export async function GET(req: NextRequest) {
     const insightCompleted = Number(InsightHuntingSubmission.some(
       (submission) => isPdfUrl(submission.file_url),
     ));
-    const completed = networkingCompleted + explorerCompleted + mentoringCompleted +
+    const completed = networkingProgress.completed + explorerCompleted + mentoringCompleted +
       fossibCompleted + insightCompleted;
+    const required = NETWORKING_REQUIRED_TOTAL + 4;
 
     return {
       ...user,
-      progress: { completed, required: 6, percentage: Math.round((completed / 6) * 100) },
+      progress: {
+        completed,
+        required,
+        percentage: Math.round((completed / required) * 100),
+      },
     };
   });
 

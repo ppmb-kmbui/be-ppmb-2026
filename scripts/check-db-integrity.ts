@@ -22,6 +22,20 @@ async function tableExists(regclass: string): Promise<boolean> {
   return Boolean(result.rows[0]?.table_name);
 }
 
+async function columnExists(tableName: string, columnName: string): Promise<boolean> {
+  const result = await client.query<{ exists: boolean }>(
+    `SELECT EXISTS (
+       SELECT 1
+       FROM information_schema.columns
+       WHERE table_schema = 'public'
+         AND table_name = $1
+         AND column_name = $2
+     ) AS exists`,
+    [tableName, columnName],
+  );
+  return result.rows[0]?.exists === true;
+}
+
 async function countIfExists(regclass: string, query: string): Promise<number | null> {
   return await tableExists(regclass) ? count(query) : null;
 }
@@ -37,6 +51,14 @@ await client.connect();
 
 try {
   await client.query("BEGIN READ ONLY");
+
+  const networkingTableExists = await tableExists("public.networking_submissions");
+  const hasRetiredDocsColumns = networkingTableExists &&
+    await columnExists("networking_submissions", "first_docs_url");
+  const hasFriendSubmissionColumns = networkingTableExists &&
+    await columnExists("networking_submissions", "friend_id");
+  const hasNetworkingAnswers = await tableExists("public.networking_answers");
+  const hasNetworkingQuestions = await tableExists("public.networking_questions");
 
   const result = {
     duplicatePairs: {
@@ -58,6 +80,70 @@ try {
           HAVING COUNT(*) > 1
         ) AS duplicate_pairs
       `),
+    },
+    networking: {
+      retiredTwoDocsRows: hasRetiredDocsColumns
+        ? await count('SELECT COUNT(*)::int AS count FROM "networking_submissions"')
+        : null,
+      invalidFriendPairs: hasFriendSubmissionColumns
+        ? await count(`
+            SELECT COUNT(*)::int AS count
+            FROM "networking_submissions" submission
+            WHERE submission."user_id" = submission."friend_id"
+               OR NOT EXISTS (
+                    SELECT 1 FROM users friend
+                    WHERE friend.id = submission."friend_id"
+                      AND friend.is_admin = false
+                      AND friend.batch IN (2023, 2024, 2025, 2026)
+               )
+               OR NOT EXISTS (
+                    SELECT 1 FROM connections outgoing
+                    WHERE outgoing.from_id = submission."user_id"
+                      AND outgoing.to_id = submission."friend_id"
+                      AND outgoing.status IN ('accepted', 'done')
+               )
+               OR NOT EXISTS (
+                    SELECT 1 FROM connections reciprocal
+                    WHERE reciprocal.from_id = submission."friend_id"
+                      AND reciprocal.to_id = submission."user_id"
+                      AND reciprocal.status IN ('accepted', 'done')
+               )
+          `)
+        : null,
+      incompleteSubmissions: hasFriendSubmissionColumns && hasNetworkingAnswers && hasNetworkingQuestions
+        ? await count(`
+            SELECT COUNT(*)::int AS count
+            FROM "networking_submissions" submission
+            WHERE (
+              SELECT COUNT(*)
+              FROM "networking_answers" answer
+              JOIN "networking_questions" question ON question.id = answer.question_id
+              WHERE answer.submission_id = submission.id
+                AND question.is_active = true
+                AND BTRIM(answer.answer) <> ''
+                AND (question.is_custom = false OR BTRIM(answer.custom_question) <> '')
+            ) <> (
+              SELECT COUNT(*) FROM "networking_questions" WHERE is_active = true
+            )
+          `)
+        : null,
+      activeQuestionCount: hasNetworkingQuestions
+        ? await count('SELECT COUNT(*)::int AS count FROM "networking_questions" WHERE "is_active" = true')
+        : null,
+      activeFixedQuestionCount: hasNetworkingQuestions
+        ? await count(`
+            SELECT COUNT(*)::int AS count
+            FROM "networking_questions"
+            WHERE "is_active" = true AND "is_custom" = false
+          `)
+        : null,
+      activeCustomQuestionCount: hasNetworkingQuestions
+        ? await count(`
+            SELECT COUNT(*)::int AS count
+            FROM "networking_questions"
+            WHERE "is_active" = true AND "is_custom" = true
+          `)
+        : null,
     },
     legacyRows: {
       networkingMaba: await countIfExists(
@@ -172,6 +258,21 @@ try {
   ) {
     throw new Error(
       "Ditemukan pasangan koneksi duplikat. Migration dihentikan agar data tidak dihapus otomatis.",
+    );
+  }
+
+  if (
+    (result.networking.invalidFriendPairs ?? 0) > 0 ||
+    (result.networking.incompleteSubmissions ?? 0) > 0 ||
+    (result.networking.activeQuestionCount !== null &&
+      result.networking.activeQuestionCount !== 4) ||
+    (result.networking.activeFixedQuestionCount !== null &&
+      result.networking.activeFixedQuestionCount !== 3) ||
+    (result.networking.activeCustomQuestionCount !== null &&
+      result.networking.activeCustomQuestionCount !== 1)
+  ) {
+    throw new Error(
+      "Kontrak Networking baru tidak valid: katalog, jawaban, atau koneksi mutual bermasalah.",
     );
   }
 } catch (error) {

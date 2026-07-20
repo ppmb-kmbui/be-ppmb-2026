@@ -20,6 +20,7 @@ import * as insightHunting from "../src/app/api/v1/tasks/insight-hunting/route";
 import * as mentoring from "../src/app/api/v1/tasks/mentoring/route";
 import * as mentoringVideos from "../src/app/api/v1/tasks/mentoring/videos/route";
 import * as networking from "../src/app/api/v1/tasks/networking/route";
+import * as networkingByFriend from "../src/app/api/v1/tasks/networking/[friendId]/route";
 import * as tasks from "../src/app/api/v1/tasks/route";
 
 type Check = {
@@ -30,13 +31,14 @@ type Check = {
 const request = (path: string, method = "GET") =>
   new NextRequest(`http://localhost:4000${path}`, { method });
 
-const requestWithToken = (path: string, token: string) =>
+const requestWithToken = (path: string, token: string, method = "POST") =>
   new NextRequest(`http://localhost:4000${path}`, {
-    method: "POST",
+    method,
     headers: { authorization: `Bearer ${token}` },
   });
 
 const params = { params: Promise.resolve({ id: "1" }) };
+const friendParams = { params: Promise.resolve({ friendId: "1" }) };
 
 const checks: Check[] = [
   { name: "auth/profile GET", run: () => authProfile.GET(request("/api/v1/auth/profile")) },
@@ -53,7 +55,8 @@ const checks: Check[] = [
   { name: "quotes POST", run: () => quotes.POST(request("/api/v1/quotes", "POST")) },
   { name: "tasks GET", run: () => tasks.GET(request("/api/v1/tasks")) },
   { name: "tasks/networking GET", run: () => networking.GET(request("/api/v1/tasks/networking")) },
-  { name: "tasks/networking POST", run: () => networking.POST(request("/api/v1/tasks/networking", "POST")) },
+  { name: "tasks/networking/:friendId GET", run: () => networkingByFriend.GET(request("/api/v1/tasks/networking/1"), friendParams) },
+  { name: "tasks/networking/:friendId PUT", run: () => networkingByFriend.PUT(request("/api/v1/tasks/networking/1", "PUT"), friendParams) },
   { name: "explorer GET", run: () => explorer.GET(request("/api/v1/tasks/explorer")) },
   { name: "explorer POST", run: () => explorer.POST(request("/api/v1/tasks/explorer", "POST")) },
   { name: "fossib GET", run: () => fossib.GET(request("/api/v1/tasks/fossib")) },
@@ -104,7 +107,7 @@ for (const envKey of Object.values(TASK_DEADLINE_ENV_KEYS)) {
 }
 
 const closedDeadlineChecks: Check[] = [
-  { name: "tasks/networking POST", run: () => networking.POST(requestWithToken("/api/v1/tasks/networking", token)) },
+  { name: "tasks/networking/:friendId PUT", run: () => networkingByFriend.PUT(requestWithToken("/api/v1/tasks/networking/1", token, "PUT"), friendParams) },
   { name: "explorer POST", run: () => explorer.POST(requestWithToken("/api/v1/tasks/explorer", token)) },
   { name: "fossib POST", run: () => fossib.POST(requestWithToken("/api/v1/tasks/fossib", token)) },
   { name: "insight-hunting POST", run: () => insightHunting.POST(requestWithToken("/api/v1/tasks/insight-hunting", token)) },

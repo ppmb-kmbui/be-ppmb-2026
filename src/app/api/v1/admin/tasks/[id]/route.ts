@@ -1,8 +1,8 @@
 import { authenticateRequest } from "@/lib/auth";
+import { getNetworkingOverview } from "@/lib/networking";
 import { prisma } from "@/lib/prisma";
 import serverResponse, { forbiddenResponse, unauthorizedResponse } from "@/utils/serverResponse";
 import {
-  googleDocsResourceId,
   isGoogleDriveResourceUrl,
   isImageUrl,
   isPdfUrl,
@@ -41,21 +41,29 @@ export async function GET(req: NextRequest, props: { params: Promise<{ id: strin
     return serverResponse({ success: false, message: "User tidak ditemukan", error: "USER_NOT_FOUND", status: 404 });
   }
 
-  const networking = await prisma.networkingSubmission.findUnique({ where: { userId } });
-  const fossib = await prisma.fossibSubmission.findUnique({ where: { userId } });
-  const insightHunting = await prisma.insightHuntingSubmission.findUnique({ where: { userId } });
-  const mentoring = await prisma.mentoringSubmission.findUnique({ where: { userId } });
-  const explorer = await prisma.explorerSubmission.findUnique({ where: { userId } });
-  const legacyMentoringVlog = await prisma.mentoringVlogSubmission.findUnique({ where: { userId } });
-  const legacyMentoringReflection = await prisma.mentoringReflection.findUnique({ where: { userId } });
-  const legacyFirstFossib = await prisma.firstFossibSessionSubmission.findUnique({ where: { userId } });
-  const legacySecondFossib = await prisma.secondFossibSessionSubmission.findUnique({ where: { userId } });
+  const [
+    networking,
+    fossib,
+    insightHunting,
+    mentoring,
+    explorer,
+    legacyMentoringVlog,
+    legacyMentoringReflection,
+    legacyFirstFossib,
+    legacySecondFossib,
+  ] = await Promise.all([
+    getNetworkingOverview(userId),
+    prisma.fossibSubmission.findUnique({ where: { userId } }),
+    prisma.insightHuntingSubmission.findUnique({ where: { userId } }),
+    prisma.mentoringSubmission.findUnique({ where: { userId } }),
+    prisma.explorerSubmission.findUnique({ where: { userId } }),
+    prisma.mentoringVlogSubmission.findUnique({ where: { userId } }),
+    prisma.mentoringReflection.findUnique({ where: { userId } }),
+    prisma.firstFossibSessionSubmission.findUnique({ where: { userId } }),
+    prisma.secondFossibSessionSubmission.findUnique({ where: { userId } }),
+  ]);
 
-  const firstDocumentId = googleDocsResourceId(networking?.firstDocsUrl);
-  const secondDocumentId = googleDocsResourceId(networking?.secondDocsUrl);
-  const networkingCompleted = Number(firstDocumentId !== null) + Number(
-    secondDocumentId !== null && secondDocumentId !== firstDocumentId,
-  );
+  const networkingCompleted = networking.progress.completed;
   const explorerCompleted = Number(
     hasValue(explorer?.activityName) && isImageUrl(explorer?.img_url ?? ""),
   );
@@ -68,9 +76,10 @@ export async function GET(req: NextRequest, props: { params: Promise<{ id: strin
   const insightCompleted = Number(isPdfUrl(insightHunting?.file_url ?? ""));
   const completed = networkingCompleted + explorerCompleted + mentoringCompleted +
     fossibCompleted + insightCompleted;
+  const overallRequired = networking.progress.required + 4;
 
   const status = {
-    networking: networkingCompleted === 2,
+    networking: networkingCompleted === networking.progress.required,
     explorer: explorerCompleted === 1,
     mentoring: mentoringCompleted === 1,
     fosterSiblings: fossibCompleted === 1,
@@ -86,8 +95,9 @@ export async function GET(req: NextRequest, props: { params: Promise<{ id: strin
       progress: {
         networking: {
           completed: networkingCompleted,
-          required: 2,
-          percentage: percentage(networkingCompleted, 2),
+          required: networking.progress.required,
+          percentage: networking.progress.percentage,
+          byBatch: networking.progress.byBatch,
         },
         explorer: {
           completed: explorerCompleted,
@@ -109,13 +119,28 @@ export async function GET(req: NextRequest, props: { params: Promise<{ id: strin
           required: 1,
           percentage: percentage(insightCompleted, 1),
         },
-        overall: { completed, required: 6, percentage: percentage(completed, 6) },
+        overall: {
+          completed,
+          required: overallRequired,
+          percentage: percentage(completed, overallRequired),
+        },
         // Compatibility keys retained for clients that still deserialize them.
-        faculty: { SAINTEK: 0, SOSHUM: 0, RIK_VOK: 0, OTHER: 0 },
-        senior: { "2025": 0, "2024": 0, "2023": 0 },
+        faculty: { "2026": networking.progress.byBatch["2026"] },
+        senior: {
+          "2025": networking.progress.byBatch["2025"],
+          "2024": networking.progress.byBatch["2024"],
+          "2023": networking.progress.byBatch["2023"],
+        },
       },
       submissions: {
-        networking,
+        networking: networking.submissions.map((submission) => ({
+          ...submission,
+          answers: submission.answers.map((answer) => ({
+            ...answer,
+            prompt: networking.questions.find(({ id }) => id === answer.questionId)?.prompt ?? null,
+          })),
+        })),
+        networkingQuestions: networking.questions,
         explorer,
         mentoring: { submission: mentoring, gdrive_url: mentoring?.gdriveUrl ?? null },
         fossib,

@@ -57,4 +57,25 @@ assert.equal(
   true,
 );
 
-console.log("Endpoint register dan update profil menolak fakultas di luar enum.");
+const invalidProfileImageResponse = await profile.PUT(new NextRequest(
+  "http://localhost:4000/api/v1/profile",
+  {
+    method: "PUT",
+    headers: { authorization: `Bearer ${token}` },
+    body: JSON.stringify({ imgUrl: "javascript:alert(1)" }),
+  },
+));
+
+assert.equal(invalidProfileImageResponse.status, 400);
+const invalidProfileImageBody = await invalidProfileImageResponse.json();
+assert.equal(invalidProfileImageBody.success, false);
+assert.equal(
+  invalidProfileImageBody.error.some(
+    (error: { path?: string[] }) => error.path?.[0] === "imgUrl",
+  ),
+  true,
+);
+
+console.log(
+  "Endpoint register/update profil memvalidasi fakultas dan URL foto profil.",
+);

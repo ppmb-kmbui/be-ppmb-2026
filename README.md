@@ -25,6 +25,7 @@ Server development berjalan di [http://localhost:4000](http://localhost:4000), s
 ```bash
 npm run db:validate
 npm run test:task-contracts
+npm run test:networking
 npm run test:auth-routes
 npm run build
 ```

@@ -133,7 +133,7 @@ export async function POST(req: NextRequest) {
  *                 example: https://example.com/avatar.jpg
  *               faculty:
  *                 type: string
- *                 enum: [Fasilkom, FKM, Fisip, FKG, FK, FMIPA, FT, Vokasi, FH, FPsi, FIA, FF, FIK, FEB, Sastra Mesin]
+ *                 enum: [Fasilkom, FKM, Fisip, FKG, FK, FMIPA, FT, Vokasi, FH, FPsi, FIA, FF, FIK, FEB, FIB, Sastra Mesin]
  *                 example: Fasilkom
  *               batch:
  *                 type: integer
@@ -169,7 +169,7 @@ export async function POST(req: NextRequest) {
  *                       example: https://example.com/avatar.jpg
  *                     faculty:
  *                       type: string
- *                       enum: [Fasilkom, FKM, Fisip, FKG, FK, FMIPA, FT, Vokasi, FH, FPsi, FIA, FF, FIK, FEB, Sastra Mesin]
+ *                       enum: [Fasilkom, FKM, Fisip, FKG, FK, FMIPA, FT, Vokasi, FH, FPsi, FIA, FF, FIK, FEB, FIB, Sastra Mesin]
  *                       example: Fasilkom
  *                     batch:
  *                       type: integer
