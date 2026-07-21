@@ -4,6 +4,7 @@ import {
   IMAGE_MAX_UPLOAD_SIZE_MB,
 } from "@/lib/const";
 import {
+  NETWORKING_FIXED_QUESTION_COUNTS,
   NETWORKING_BATCH_REQUIREMENTS,
   NETWORKING_REQUIRED_TOTAL,
 } from "@/lib/networking";
@@ -18,8 +19,19 @@ export async function GET() {
       taskRequirements: {
         networkingFriends: NETWORKING_REQUIRED_TOTAL,
         networkingByBatch: NETWORKING_BATCH_REQUIREMENTS,
-        networkingFixedQuestions: 3,
+        // Legacy field is the peer-question count.
+        networkingFixedQuestions: NETWORKING_FIXED_QUESTION_COUNTS.PEER,
         networkingCustomQuestions: 1,
+        networkingQuestionSets: {
+          peer: {
+            fixedQuestions: NETWORKING_FIXED_QUESTION_COUNTS.PEER,
+            customQuestions: 1,
+          },
+          senior: {
+            fixedQuestions: NETWORKING_FIXED_QUESTION_COUNTS.SENIOR,
+            customQuestions: 1,
+          },
+        },
         networkingPhotos: NETWORKING_REQUIRED_TOTAL,
         explorerPhotos: 1,
         mentoringDriveLinks: 1,

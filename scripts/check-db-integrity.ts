@@ -59,6 +59,8 @@ try {
     await columnExists("networking_submissions", "friend_id");
   const hasNetworkingAnswers = await tableExists("public.networking_answers");
   const hasNetworkingQuestions = await tableExists("public.networking_questions");
+  const hasNetworkingQuestionType = hasNetworkingQuestions &&
+    await columnExists("networking_questions", "question_type");
 
   const result = {
     duplicatePairs: {
@@ -91,27 +93,66 @@ try {
             FROM "networking_submissions" submission
             WHERE submission."user_id" = submission."friend_id"
                OR NOT EXISTS (
+                    SELECT 1 FROM users owner
+                    WHERE owner.id = submission."user_id"
+                      AND owner.is_admin = false
+                      AND owner.batch = 2026
+               )
+               OR NOT EXISTS (
                     SELECT 1 FROM users friend
                     WHERE friend.id = submission."friend_id"
                       AND friend.is_admin = false
                       AND friend.batch IN (2023, 2024, 2025, 2026)
                )
-               OR NOT EXISTS (
-                    SELECT 1 FROM connections outgoing
-                    WHERE outgoing.from_id = submission."user_id"
-                      AND outgoing.to_id = submission."friend_id"
-                      AND outgoing.status IN ('accepted', 'done')
-               )
-               OR NOT EXISTS (
-                    SELECT 1 FROM connections reciprocal
-                    WHERE reciprocal.from_id = submission."friend_id"
-                      AND reciprocal.to_id = submission."user_id"
-                      AND reciprocal.status IN ('accepted', 'done')
+               OR (
+                    EXISTS (
+                      SELECT 1 FROM users peer
+                      WHERE peer.id = submission."friend_id" AND peer.batch = 2026
+                    )
+                    AND (
+                      NOT EXISTS (
+                        SELECT 1 FROM connections outgoing
+                        WHERE outgoing.from_id = submission."user_id"
+                          AND outgoing.to_id = submission."friend_id"
+                          AND outgoing.status IN ('accepted', 'done')
+                      )
+                      OR NOT EXISTS (
+                        SELECT 1 FROM connections reciprocal
+                        WHERE reciprocal.from_id = submission."friend_id"
+                          AND reciprocal.to_id = submission."user_id"
+                          AND reciprocal.status IN ('accepted', 'done')
+                      )
+                    )
                )
           `)
         : null,
       incompleteSubmissions: hasFriendSubmissionColumns && hasNetworkingAnswers && hasNetworkingQuestions
-        ? await count(`
+        ? await count(hasNetworkingQuestionType ? `
+            SELECT COUNT(*)::int AS count
+            FROM "networking_submissions" submission
+            JOIN users friend ON friend.id = submission.friend_id
+            WHERE (
+              SELECT COUNT(*)
+              FROM "networking_answers" answer
+              JOIN "networking_questions" question ON question.id = answer.question_id
+              WHERE answer.submission_id = submission.id
+                AND question.is_active = true
+                AND question.question_type = CASE
+                  WHEN friend.batch = 2026 THEN 'PEER'::"NetworkingQuestionType"
+                  ELSE 'SENIOR'::"NetworkingQuestionType"
+                END
+                AND BTRIM(answer.answer) <> ''
+                AND (question.is_custom = false OR BTRIM(answer.custom_question) <> '')
+            ) <> (
+              SELECT COUNT(*)
+              FROM "networking_questions" question
+              WHERE question.is_active = true
+                AND question.question_type = CASE
+                  WHEN friend.batch = 2026 THEN 'PEER'::"NetworkingQuestionType"
+                  ELSE 'SENIOR'::"NetworkingQuestionType"
+                END
+            )
+          ` : `
             SELECT COUNT(*)::int AS count
             FROM "networking_submissions" submission
             WHERE (
@@ -127,6 +168,7 @@ try {
             )
           `)
         : null,
+      hasQuestionTypeCatalog: hasNetworkingQuestionType,
       activeQuestionCount: hasNetworkingQuestions
         ? await count('SELECT COUNT(*)::int AS count FROM "networking_questions" WHERE "is_active" = true')
         : null,
@@ -142,6 +184,18 @@ try {
             SELECT COUNT(*)::int AS count
             FROM "networking_questions"
             WHERE "is_active" = true AND "is_custom" = true
+          `)
+        : null,
+      peerQuestionCount: hasNetworkingQuestionType
+        ? await count(`
+            SELECT COUNT(*)::int AS count FROM "networking_questions"
+            WHERE "is_active" = true AND "question_type" = 'PEER'
+          `)
+        : null,
+      seniorQuestionCount: hasNetworkingQuestionType
+        ? await count(`
+            SELECT COUNT(*)::int AS count FROM "networking_questions"
+            WHERE "is_active" = true AND "question_type" = 'SENIOR'
           `)
         : null,
     },
@@ -265,11 +319,15 @@ try {
     (result.networking.invalidFriendPairs ?? 0) > 0 ||
     (result.networking.incompleteSubmissions ?? 0) > 0 ||
     (result.networking.activeQuestionCount !== null &&
-      result.networking.activeQuestionCount !== 4) ||
+      result.networking.activeQuestionCount !== (hasNetworkingQuestionType ? 10 : 4)) ||
     (result.networking.activeFixedQuestionCount !== null &&
-      result.networking.activeFixedQuestionCount !== 3) ||
+      result.networking.activeFixedQuestionCount !== (hasNetworkingQuestionType ? 8 : 3)) ||
     (result.networking.activeCustomQuestionCount !== null &&
-      result.networking.activeCustomQuestionCount !== 1)
+      result.networking.activeCustomQuestionCount !== (hasNetworkingQuestionType ? 2 : 1)) ||
+    (result.networking.peerQuestionCount !== null &&
+      result.networking.peerQuestionCount !== 4) ||
+    (result.networking.seniorQuestionCount !== null &&
+      result.networking.seniorQuestionCount !== 6)
   ) {
     throw new Error(
       "Kontrak Networking baru tidak valid: katalog, jawaban, atau koneksi mutual bermasalah.",

@@ -5,6 +5,7 @@ import { isImageUrl, taskSubmissionErrorResponse } from "@/utils/taskSubmission"
 import { NextRequest } from "next/server";
 import { z } from "zod";
 import { taskDeadlineGuard } from "@/lib/taskDeadline";
+import { taskOwnerGuard } from "@/lib/taskOwner";
 
 const PhotoUrlSchema = z.string().trim().url("URL foto tidak valid").refine(
   (value) => isImageUrl(value),
@@ -28,6 +29,9 @@ async function getUserId(req: NextRequest) {
 export async function GET(req: NextRequest) {
   const userId = await getUserId(req);
   if (!userId) return unauthorizedResponse();
+  const ownerResponse = await taskOwnerGuard(userId);
+  if (ownerResponse) return ownerResponse;
+
   const data = await prisma.explorerSubmission.findUnique({ where: { userId } });
   return serverResponse({
     success: true,
@@ -47,6 +51,8 @@ export async function POST(req: NextRequest) {
   const userId = await getUserId(req);
   if (!userId) return unauthorizedResponse();
 
+  const ownerResponse = await taskOwnerGuard(userId);
+  if (ownerResponse) return ownerResponse;
   const deadlineResponse = taskDeadlineGuard("explorer");
   if (deadlineResponse) return deadlineResponse;
 

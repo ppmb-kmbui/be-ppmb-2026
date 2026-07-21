@@ -41,6 +41,15 @@ export async function GET(req: NextRequest, props: { params: Promise<{ id: strin
     return serverResponse({ success: false, message: "User tidak ditemukan", error: "USER_NOT_FOUND", status: 404 });
   }
 
+  if (user.batch !== 2026) {
+    return serverResponse({
+      success: false,
+      message: "Pengguna ini bukan peserta tugas PPMB 2026",
+      error: "USER_NOT_PPMB_2026_PARTICIPANT",
+      status: 403,
+    });
+  }
+
   const [
     networking,
     fossib,
@@ -85,6 +94,10 @@ export async function GET(req: NextRequest, props: { params: Promise<{ id: strin
     fosterSiblings: fossibCompleted === 1,
     insightHunting: insightCompleted === 1,
   };
+  const networkingQuestions = [
+    ...networking.questionSets.peer,
+    ...networking.questionSets.senior,
+  ];
 
   return serverResponse({
     success: true,
@@ -137,10 +150,12 @@ export async function GET(req: NextRequest, props: { params: Promise<{ id: strin
           ...submission,
           answers: submission.answers.map((answer) => ({
             ...answer,
-            prompt: networking.questions.find(({ id }) => id === answer.questionId)?.prompt ?? null,
+            prompt: networkingQuestions.find(({ id }) => id === answer.questionId)?.prompt ?? null,
           })),
         })),
-        networkingQuestions: networking.questions,
+        // Flat catalog retained for older admin clients.
+        networkingQuestions,
+        networkingQuestionSets: networking.questionSets,
         explorer,
         mentoring: { submission: mentoring, gdrive_url: mentoring?.gdriveUrl ?? null },
         fossib,

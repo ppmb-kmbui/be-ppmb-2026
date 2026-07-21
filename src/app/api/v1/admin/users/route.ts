@@ -3,7 +3,9 @@ import {
   NETWORKING_REQUIRED_TOTAL,
   NETWORKING_CONNECTION_STATUSES,
   calculateNetworkingProgressFromBatches,
+  getQuestionTypeForBatch,
   isValidNetworkingQuestionCatalog,
+  type NetworkingQuestionType,
 } from "@/lib/networking";
 import { prisma } from "@/lib/prisma";
 import serverResponse, { forbiddenResponse, unauthorizedResponse } from "@/utils/serverResponse";
@@ -31,7 +33,11 @@ type AdminUserListRecord = {
       questionId: number;
       answer: string;
       customQuestion: string | null;
-      question: { isCustom: boolean; isActive: boolean };
+      question: {
+        isCustom: boolean;
+        isActive: boolean;
+        questionType: NetworkingQuestionType;
+      };
     }[];
   }[];
   ExplorerSubmission: { activityName: string | null; img_url: string }[];
@@ -53,6 +59,7 @@ export async function GET(req: NextRequest) {
   const search = req.nextUrl.searchParams.get("search")?.trim();
   const where = {
     isAdmin: false,
+    batch: 2026,
     ...(search ? { fullname: { contains: search, mode: "insensitive" as const } } : {}),
   };
 
@@ -60,7 +67,7 @@ export async function GET(req: NextRequest) {
     prisma.user.count({ where }),
     prisma.networkingQuestion.findMany({
       where: { isActive: true },
-      select: { id: true, isCustom: true },
+      select: { id: true, isCustom: true, questionType: true },
     }),
     prisma.user.findMany({
       where,
@@ -86,7 +93,9 @@ export async function GET(req: NextRequest) {
                 questionId: true,
                 answer: true,
                 customQuestion: true,
-                question: { select: { isCustom: true, isActive: true } },
+                question: {
+                  select: { isCustom: true, isActive: true, questionType: true },
+                },
               },
             },
           },
@@ -105,11 +114,27 @@ export async function GET(req: NextRequest) {
         },
       },
     }),
-  ]) as [number, { id: number; isCustom: boolean }[], AdminUserListRecord[]];
-  const validQuestionCatalog = isValidNetworkingQuestionCatalog(activeQuestions);
-  const activeQuestionIds = new Set(
-    validQuestionCatalog ? activeQuestions.map(({ id }) => id) : [],
-  );
+  ]) as [
+    number,
+    { id: number; isCustom: boolean; questionType: NetworkingQuestionType }[],
+    AdminUserListRecord[],
+  ];
+  const questionsByType = {
+    PEER: activeQuestions.filter(({ questionType }) => questionType === "PEER"),
+    SENIOR: activeQuestions.filter(({ questionType }) => questionType === "SENIOR"),
+  };
+  const validQuestionCatalog = {
+    PEER: isValidNetworkingQuestionCatalog(questionsByType.PEER, "PEER"),
+    SENIOR: isValidNetworkingQuestionCatalog(questionsByType.SENIOR, "SENIOR"),
+  };
+  const activeQuestionIds = {
+    PEER: new Set(
+      validQuestionCatalog.PEER ? questionsByType.PEER.map(({ id }) => id) : [],
+    ),
+    SENIOR: new Set(
+      validQuestionCatalog.SENIOR ? questionsByType.SENIOR.map(({ id }) => id) : [],
+    ),
+  };
 
   const hasValue = (value: string | null | undefined) =>
     typeof value === "string" && value.trim().length > 0;
@@ -135,17 +160,21 @@ export async function GET(req: NextRequest) {
     );
     const completedNetworkingBatches = NetworkingSubmissions
       .filter((submission) => {
+        const questionType = getQuestionTypeForBatch(submission.friend.batch);
         if (
-          !mutualFriendIds.has(submission.friend.id) ||
-          !validQuestionCatalog ||
+          !questionType ||
+          (questionType === "PEER" && !mutualFriendIds.has(submission.friend.id)) ||
+          !validQuestionCatalog[questionType] ||
           !isImageUrl(submission.photoUrl)
         ) return false;
         const answersByQuestion = new Map(
           submission.answers
-            .filter(({ question }) => question.isActive)
+            .filter(({ question }) =>
+              question.isActive && question.questionType === questionType,
+            )
             .map((answer) => [answer.questionId, answer]),
         );
-        return [...activeQuestionIds].every((questionId) => {
+        return [...activeQuestionIds[questionType]].every((questionId) => {
           const answer = answersByQuestion.get(questionId);
           return Boolean(
             answer?.answer.trim() &&

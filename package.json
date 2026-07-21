@@ -11,7 +11,6 @@
     "db:generate": "prisma generate",
     "db:validate": "prisma validate",
     "db:migrate": "prisma migrate deploy",
-    "db:seed": "prisma db seed",
     "db:check-integrity": "tsx scripts/check-db-integrity.ts",
     "test:auth-routes": "tsx scripts/check-route-auth.ts",
     "test:faculty": "tsx scripts/check-faculty-validation.ts",

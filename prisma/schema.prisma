@@ -7,6 +7,11 @@ datasource db {
   provider = "postgresql"
 }
 
+enum NetworkingQuestionType {
+  PEER
+  SENIOR
+}
+
 model User {
   id                            Int                             @id @default(autoincrement())
   email                         String                          @unique
@@ -87,14 +92,17 @@ model NetworkingSubmission {
 }
 
 model NetworkingQuestion {
-  id       Int                @id @default(autoincrement())
-  code     String             @unique
-  prompt   String
-  position Int                @unique
-  isCustom Boolean            @default(false) @map("is_custom")
-  isActive Boolean            @default(true) @map("is_active")
-  answers  NetworkingAnswer[]
+  id           Int                       @id @default(autoincrement())
+  questionType NetworkingQuestionType    @default(PEER) @map("question_type")
+  code         String
+  prompt       String
+  position     Int
+  isCustom     Boolean                   @default(false) @map("is_custom")
+  isActive     Boolean                   @default(true) @map("is_active")
+  answers      NetworkingAnswer[]
 
+  @@unique([questionType, code])
+  @@unique([questionType, position])
   @@map("networking_questions")
 }
 

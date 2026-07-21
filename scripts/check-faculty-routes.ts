@@ -1,9 +1,8 @@
 import assert from "node:assert/strict";
-import { SignJWT } from "jose";
 import { NextRequest } from "next/server";
 
 import * as register from "../src/app/api/v1/auth/register/route";
-import * as profile from "../src/app/api/v1/profile/route";
+import { UpdateProfileSchema } from "../src/lib/profileContract";
 
 const invalidFaculty = "Ilmu Komputer";
 
@@ -33,49 +32,52 @@ assert.equal(
   true,
 );
 
-process.env.JWT_SECRET = "faculty-route-test-secret-at-least-32-characters";
-const token = await new SignJWT({ is_admin: false })
-  .setProtectedHeader({ alg: "HS256" })
-  .setSubject("1")
-  .setExpirationTime("5m")
-  .sign(new TextEncoder().encode(process.env.JWT_SECRET));
-
-const profileResponse = await profile.PUT(new NextRequest(
-  "http://localhost:4000/api/v1/profile",
+const invalidBatchResponse = await register.POST(new NextRequest(
+  "http://localhost:4000/api/v1/auth/register",
   {
-    method: "PUT",
-    headers: { authorization: `Bearer ${token}` },
-    body: JSON.stringify({ faculty: invalidFaculty }),
+    method: "POST",
+    body: JSON.stringify({
+      fullname: "Batch Validation Test",
+      lineId: "batch.test",
+      whatsappNumber: "081234567890",
+      email: "batch-validation@example.com",
+      password: "Password123!",
+      confirmPassword: "Password123!",
+      imgUrl: "https://placehold.co/600x600/png",
+      faculty: "Fasilkom",
+      batch: 2025,
+    }),
   },
 ));
 
-assert.equal(profileResponse.status, 400);
-const profileBody = await profileResponse.json();
-assert.equal(profileBody.success, false);
+assert.equal(invalidBatchResponse.status, 400);
+const invalidBatchBody = await invalidBatchResponse.json();
+assert.equal(invalidBatchBody.success, false);
 assert.equal(
-  profileBody.error.some((error: { path?: string[] }) => error.path?.[0] === "faculty"),
-  true,
-);
-
-const invalidProfileImageResponse = await profile.PUT(new NextRequest(
-  "http://localhost:4000/api/v1/profile",
-  {
-    method: "PUT",
-    headers: { authorization: `Bearer ${token}` },
-    body: JSON.stringify({ imgUrl: "javascript:alert(1)" }),
-  },
-));
-
-assert.equal(invalidProfileImageResponse.status, 400);
-const invalidProfileImageBody = await invalidProfileImageResponse.json();
-assert.equal(invalidProfileImageBody.success, false);
-assert.equal(
-  invalidProfileImageBody.error.some(
-    (error: { path?: string[] }) => error.path?.[0] === "imgUrl",
+  invalidBatchBody.error.some((error: { field?: string; message?: string }) =>
+    error.field === "batch" && error.message?.includes("2026"),
   ),
   true,
 );
 
+const profileBody = UpdateProfileSchema.safeParse({ faculty: invalidFaculty });
+assert.equal(profileBody.success, false);
+if (profileBody.success) throw new Error("Fakultas profil invalid lolos validasi");
+assert.equal(
+  profileBody.error.issues.some((error) => error.path[0] === "faculty"),
+  true,
+);
+
+const invalidProfileImageBody = UpdateProfileSchema.safeParse({
+  imgUrl: "javascript:alert(1)",
+});
+assert.equal(invalidProfileImageBody.success, false);
+if (invalidProfileImageBody.success) throw new Error("URL foto profil invalid lolos validasi");
+assert.equal(
+  invalidProfileImageBody.error.issues.some((error) => error.path[0] === "imgUrl"),
+  true,
+);
+
 console.log(
-  "Endpoint register/update profil memvalidasi fakultas dan URL foto profil.",
+  "Endpoint register/update profil memvalidasi angkatan, fakultas, dan URL foto profil.",
 );

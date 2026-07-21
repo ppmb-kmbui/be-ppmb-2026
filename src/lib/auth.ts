@@ -1,40 +1,37 @@
 import type { NextRequest } from "next/server";
-import { jwtVerify, type JWTPayload } from "jose";
+import { getAccessToken, verifyAccessToken, type AuthIdentity } from "@/lib/authToken";
+import { prisma } from "@/lib/prisma";
 
-export type AuthIdentity = {
-  userId: number;
-  isAdmin: boolean;
-  payload: JWTPayload;
-};
+export type { AuthIdentity } from "@/lib/authToken";
 
-export function getJwtSecret(): Uint8Array {
-  const secret = process.env.JWT_SECRET;
-  if (!secret) throw new Error("JWT_SECRET belum dikonfigurasi");
-  return new TextEncoder().encode(secret);
-}
+export type AuthUserLoader = (
+  userId: number,
+) => Promise<{ id: number; isAdmin: boolean } | null>;
 
-export function getAccessToken(req: NextRequest): string | null {
-  const authorization = req.headers.get("authorization");
-  const bearerMatch = authorization?.match(/^Bearer\s+(.+)$/i);
-  if (bearerMatch) {
-    return bearerMatch[1].trim() || null;
-  }
-  return req.cookies.get("ppmb_access_token")?.value ?? null;
-}
-
-export async function verifyAccessToken(token: string): Promise<AuthIdentity> {
-  const { payload } = await jwtVerify(token, getJwtSecret(), {
-    algorithms: ["HS256"],
+async function loadCurrentAuthUser(userId: number) {
+  return prisma.user.findUnique({
+    where: { id: userId },
+    select: { id: true, isAdmin: true },
   });
-  const userId = Number(payload.sub);
-  if (!Number.isInteger(userId) || userId <= 0) {
-    throw new Error("Subject token tidak valid");
-  }
-  return { userId, isAdmin: payload.is_admin === true, payload };
 }
 
-export async function authenticateRequest(req: NextRequest): Promise<AuthIdentity> {
+export async function authenticateRequest(
+  req: NextRequest,
+  userLoader: AuthUserLoader = loadCurrentAuthUser,
+): Promise<AuthIdentity> {
   const token = getAccessToken(req);
   if (!token) throw new Error("Token tidak ditemukan");
-  return verifyAccessToken(token);
+  const verified = await verifyAccessToken(token);
+  const currentUser = await userLoader(verified.userId);
+  if (!currentUser || currentUser.id !== verified.userId) {
+    throw new Error("User token tidak ditemukan");
+  }
+
+  return {
+    ...verified,
+    userId: currentUser.id,
+    // Authorization always follows current DB state. The token claim is never
+    // trusted for admin access because roles can change before token expiry.
+    isAdmin: currentUser.isAdmin,
+  };
 }

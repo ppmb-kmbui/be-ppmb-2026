@@ -1,7 +1,38 @@
 import { prisma } from "@/lib/prisma";
 import { authenticateRequest } from "@/lib/auth";
+import { isFriendshipPairAllowed } from "@/lib/networking";
 import serverResponse, { InvalidTargetUserResponse, unauthorizedResponse } from "@/utils/serverResponse";
 import { NextRequest } from "next/server";
+
+async function friendshipEligibility(userId: number, targetId: number) {
+  if (userId === targetId) {
+    return serverResponse({
+      success: false,
+      message: "Permintaan pertemanan tidak valid",
+      error: "CANNOT_CONNECT_TO_SELF",
+      status: 400,
+    });
+  }
+
+  const users = await prisma.user.findMany({
+    where: { id: { in: [userId, targetId] } },
+    select: { id: true, batch: true, isAdmin: true },
+  });
+  const actor = users.find(({ id }) => id === userId);
+  const target = users.find(({ id }) => id === targetId);
+
+  if (!target) return InvalidTargetUserResponse;
+  if (!actor || !isFriendshipPairAllowed(actor, target)) {
+    return serverResponse({
+      success: false,
+      message: "Pertemanan hanya tersedia antarpeserta angkatan 2026",
+      error: "FRIENDSHIP_FOR_2026_ONLY",
+      status: 403,
+    });
+  }
+
+  return null;
+}
 
 export async function POST(req: NextRequest, props: { params: Promise<{ id: string }> }) {
   let userId: number;
@@ -15,6 +46,26 @@ export async function POST(req: NextRequest, props: { params: Promise<{ id: stri
 
   if (!Number.isInteger(targetId) || targetId <= 0) {
     return serverResponse({ success: false, message: "Bad Request", error: "Target user ID tidak valid", status: 400 });
+  }
+  const eligibilityResponse = await friendshipEligibility(userId, targetId);
+  if (eligibilityResponse) return eligibilityResponse;
+
+  const connection = await prisma.connection.findFirst({
+    where: {
+      OR: [
+        { fromId: userId, toId: targetId },
+        { fromId: targetId, toId: userId },
+      ],
+      status: { in: ["accepted", "done"] },
+    },
+  });
+  if (connection) {
+    return serverResponse({
+      success: false,
+      message: "Pertemanan sudah terhubung",
+      error: "ALREADY_CONNECTED",
+      status: 409,
+    });
   }
   const sent = await prisma.connectionRequest.findFirst({
     where: {
@@ -66,6 +117,8 @@ export async function PUT(req: NextRequest, props: { params: Promise<{ id: strin
   if (!Number.isInteger(targetId) || targetId <= 0) {
     return serverResponse({ success: false, message: "Bad Request", error: "Target user ID tidak valid", status: 400 });
   }
+  const eligibilityResponse = await friendshipEligibility(userId, targetId);
+  if (eligibilityResponse) return eligibilityResponse;
   const connectionRequest = await prisma.connectionRequest.findFirst({
     where: {
       fromId: targetId,
@@ -128,6 +181,8 @@ export async function DELETE(req: NextRequest, props: { params: Promise<{ id: st
   if (!Number.isInteger(targetId) || targetId <= 0) {
     return serverResponse({ success: false, message: "Bad Request", error: "Target user ID tidak valid", status: 400 });
   }
+  const eligibilityResponse = await friendshipEligibility(userId, targetId);
+  if (eligibilityResponse) return eligibilityResponse;
   const targetUser = await prisma.user.findUnique({
     where: { id: targetId },
   });
@@ -168,7 +223,7 @@ export async function DELETE(req: NextRequest, props: { params: Promise<{ id: st
  * @swagger
  * /api/v1/connect/{id}:
  *   post:
- *     summary: Kirim permintaan koneksi ke user lain (pertemanan)
+ *     summary: Kirim permintaan pertemanan antarpeserta angkatan 2026
  *     tags:
  *       - Connect
  *     security:
@@ -178,7 +233,7 @@ export async function DELETE(req: NextRequest, props: { params: Promise<{ id: st
  *         name: id
  *         required: true
  *         schema:
- *           type: string
+ *           type: integer
  *         description: ID target user yang ingin dikirimi permintaan koneksi
  *     responses:
  *       200:
@@ -200,14 +255,18 @@ export async function DELETE(req: NextRequest, props: { params: Promise<{ id: st
  *                   type: integer
  *                   example: 200
  *       400:
- *         description: Header tidak ditemukan
+ *         description: ID target tidak valid atau target adalah diri sendiri
+ *       401:
+ *         description: JWT tidak valid atau tidak ditemukan
+ *       403:
+ *         description: Pertemanan hanya tersedia antarpeserta angkatan 2026
  *       404:
  *         description: User tidak ditemukan
  *       409:
  *         description: Permintaan koneksi sudah ada atau user sudah mengirim permintaan ke Anda
  * 
  *   put:
- *     summary: Terima permintaan koneksi dari user lain
+ *     summary: Terima permintaan pertemanan dari peserta angkatan 2026
  *     tags:
  *       - Connect
  *     security:
@@ -217,7 +276,7 @@ export async function DELETE(req: NextRequest, props: { params: Promise<{ id: st
  *         name: id
  *         required: true
  *         schema:
- *           type: string
+ *           type: integer
  *         description: ID user yang mengirim permintaan koneksi
  *     responses:
  *       200:
@@ -239,9 +298,11 @@ export async function DELETE(req: NextRequest, props: { params: Promise<{ id: st
  *                   type: integer
  *                   example: 200
  *       400:
- *         description: Header tidak ditemukan
+ *         description: ID target tidak valid
+ *       401:
+ *         description: JWT tidak valid atau tidak ditemukan
  *       403:
- *         description: Connection Request tidak ditemukan
+ *         description: Request tidak ditemukan atau pasangan bukan sesama angkatan 2026
  *       404:
  *         description: User tidak ditemukan
  * 
@@ -256,7 +317,7 @@ export async function DELETE(req: NextRequest, props: { params: Promise<{ id: st
  *         name: id
  *         required: true
  *         schema:
- *           type: string
+ *           type: integer
  *         description: ID user yang mengirim permintaan koneksi
  *     responses:
  *       200:
@@ -278,7 +339,11 @@ export async function DELETE(req: NextRequest, props: { params: Promise<{ id: st
  *                   type: integer
  *                   example: 200
  *       400:
- *         description: Header tidak ditemukan
+ *         description: ID target tidak valid
+ *       401:
+ *         description: JWT tidak valid atau tidak ditemukan
+ *       403:
+ *         description: Pertemanan hanya tersedia antarpeserta angkatan 2026
  *       404:
  *         description: User tidak ditemukan
  */

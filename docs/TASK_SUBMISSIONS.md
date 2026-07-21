@@ -11,6 +11,8 @@ Semua endpoint pada dokumen ini membutuhkan JWT yang valid melalui salah satu ca
 
 Untuk request browser lintas origin yang memakai cookie, frontend harus mengirim `credentials: "include"`.
 
+Setelah JWT diverifikasi, backend selalu memuat ulang user dan status admin terkini dari database. Token milik user yang sudah dihapus ditolak, dan claim role lama di JWT tidak dapat memberikan akses admin. Seluruh endpoint `/api/v1/tasks/**` pada dokumen ini hanya tersedia untuk peserta non-admin angkatan 2026; akun angkatan 2023-2025 hanya dapat melihat profil dan akan menerima HTTP `403` dengan kode `TASKS_FOR_2026_ONLY` jika mencoba membuka atau mengirim tugas.
+
 ## Alur upload
 
 Untuk foto dan PDF:
@@ -56,11 +58,11 @@ Endpoint:
 - `GET /api/v1/tasks/networking/{friendId}`
 - `PUT /api/v1/tasks/networking/{friendId}`
 
-Networking hanya dapat diisi untuk teman yang sudah saling terhubung. Backend memverifikasi dua row koneksi arah pengguna→teman dan teman→pengguna dengan status `accepted` (atau status legacy `done`). Target harus peserta non-admin dari angkatan 2023, 2024, 2025, atau 2026. Submission A→B dan B→A berdiri sendiri.
+Networking hanya dapat diisi oleh peserta angkatan 2026. Untuk target sesama angkatan 2026, backend memverifikasi dua row koneksi arah pengguna→teman dan teman→pengguna dengan status `accepted` (atau status legacy `done`). Target kakak tingkat angkatan 2023, 2024, atau 2025 dapat langsung diajak Networking tanpa pertemanan.
 
 `GET /api/v1/tasks/networking` mengembalikan:
 
-- katalog tiga pertanyaan tetap dan satu pertanyaan bebas;
+- dua katalog pertanyaan: `peer` untuk sesama 2026 dan `senior` untuk kakak tingkat;
 - daftar teman eligible beserta status selesai;
 - seluruh submission pengguna; dan
 - progress total serta progress per angkatan.
@@ -80,7 +82,17 @@ Payload canonical `PUT`:
 }
 ```
 
-Semua field wajib terisi. `photo_url` harus berupa URL gambar HTTPS. Array `answers` harus berisi tepat tiga ID pertanyaan tetap yang sedang aktif tanpa duplikasi; pertanyaan bebas disimpan sebagai jawaban keempat yang ternormalisasi. `PUT` membuat submission baru atau mengganti seluruh jawaban submission yang sudah ada secara atomik, selama deadline belum lewat.
+Semua field wajib terisi. `photo_url` harus berupa URL gambar HTTPS. Untuk target 2026, `answers` harus berisi tiga ID pertanyaan tetap katalog `peer`. Untuk target 2023-2025, `answers` harus berisi lima ID pertanyaan tetap katalog `senior`. Pertanyaan bebas dan jawabannya wajib untuk kedua katalog. `PUT` membuat submission baru atau mengganti seluruh jawaban secara atomik selama deadline belum lewat.
+
+Katalog `senior` mengikuti template kakak tingkat:
+
+1. hal yang ingin dilakukan berbeda apabila kembali menjadi mahasiswa baru;
+2. saran untuk memaksimalkan pengalaman selama berkuliah di UI;
+3. pandangan mengenai UI serta tips untuk bertahan di UI;
+4. pandangan dan pengalaman di KMBUI; dan
+5. pengalaman keluar dari zona nyaman serta cara mengatasinya.
+
+Pertanyaan keenam pada katalog `senior` adalah pertanyaan bebas dari mahasiswa baru.
 
 Progress Networking:
 
@@ -90,7 +102,7 @@ Progress Networking:
 - angkatan 2023: 2 teman;
 - total: `required: 18`.
 
-Submission baru dihitung selesai jika foto, tiga jawaban tetap, pertanyaan bebas, dan jawaban bebas lengkap. Pengguna boleh mewawancarai lebih banyak teman, tetapi progress setiap angkatan dibatasi pada kuotanya. Tabel dua Google Docs sebelumnya hanya berisi dummy data dan diganti oleh tabel pertanyaan/submission/jawaban baru; tabel lain tidak disentuh.
+Submission baru dihitung selesai jika foto, seluruh jawaban tetap sesuai jenis target, pertanyaan bebas, dan jawaban bebas lengkap. Pengguna boleh mewawancarai lebih banyak orang, tetapi progress setiap angkatan dibatasi pada kuotanya. Pengguna selain angkatan 2026 tidak memiliki progress atau akses submission Networking.
 
 ## KMBUI Explorer
 

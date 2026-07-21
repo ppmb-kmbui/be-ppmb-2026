@@ -1,5 +1,6 @@
 import { authenticateRequest } from "@/lib/auth";
 import { getNetworkingOverview } from "@/lib/networking";
+import { taskOwnerGuard } from "@/lib/taskOwner";
 import serverResponse, { unauthorizedResponse } from "@/utils/serverResponse";
 import { NextRequest } from "next/server";
 
@@ -10,6 +11,9 @@ export async function GET(req: NextRequest) {
   } catch {
     return unauthorizedResponse();
   }
+
+  const ownerResponse = await taskOwnerGuard(userId);
+  if (ownerResponse) return ownerResponse;
 
   const overview = await getNetworkingOverview(userId);
 
@@ -26,7 +30,7 @@ export async function GET(req: NextRequest) {
  * /api/v1/tasks/networking:
  *   get:
  *     summary: Ambil teman eligible, pertanyaan, submission, dan progress Networking
- *     description: Hanya menampilkan teman batch 2023-2026 yang sudah terhubung dua arah.
+ *     description: Peserta 2026 dapat Networking langsung dengan angkatan 2023-2025. Target sesama 2026 harus sudah terhubung dua arah.
  *     tags:
  *       - Tasks
  *     security:
@@ -36,4 +40,6 @@ export async function GET(req: NextRequest) {
  *         description: Data Networking berhasil didapatkan
  *       401:
  *         description: JWT tidak valid atau tidak ditemukan
+ *       403:
+ *         description: Hanya tersedia untuk peserta angkatan 2026
  */

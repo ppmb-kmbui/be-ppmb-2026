@@ -4,7 +4,7 @@ import { NextRequest } from "next/server";
 import serverResponse from "@/utils/serverResponse";
 import * as jwt from "jose";
 import { z } from "zod";
-import { getJwtSecret } from "@/lib/auth";
+import { getJwtSecret } from "@/lib/authToken";
 
 const LoginSchema = z.object({
   email: z.string().trim().email("Format email tidak valid").transform((value) => value.toLowerCase()),

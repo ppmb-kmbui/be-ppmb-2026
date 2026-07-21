@@ -6,6 +6,7 @@ import serverResponse from "@/utils/serverResponse";
 import { isImageUrl } from "@/utils/taskSubmission";
 import { ValidationError } from "@/types/api-type";
 import { FacultySchema } from "@/lib/faculty";
+import { CURRENT_BATCH } from "@/lib/const";
 
 const UserSchema = z.object({
   fullname: z.string().trim().min(3, "Nama lengkap minimal 3 karakter"),
@@ -19,7 +20,13 @@ const UserSchema = z.object({
     "Foto profil harus berupa URL gambar HTTPS",
   ),
   faculty: FacultySchema,
-  batch: z.coerce.number().int().min(2020).max(2100),
+  batch: z.coerce
+    .number()
+    .int()
+    .refine(
+      (batch) => batch === CURRENT_BATCH,
+      `Registrasi hanya tersedia untuk angkatan ${CURRENT_BATCH}`,
+    ),
 }).refine((data) => data.password === data.confirmPassword, {
   path: ["confirmPassword"],
   message: "Konfirmasi password tidak sama",
@@ -137,6 +144,7 @@ export async function POST(req: NextRequest) {
  *                 example: Fasilkom
  *               batch:
  *                 type: integer
+ *                 enum: [2026]
  *                 example: 2026
  *     responses:
  *       201:
@@ -173,7 +181,7 @@ export async function POST(req: NextRequest) {
  *                       example: Fasilkom
  *                     batch:
  *                       type: integer
- *                       example: 2023
+ *                       example: 2026
  *       400:
  *         description: Validasi gagal
  *         content:

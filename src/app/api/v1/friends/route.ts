@@ -1,6 +1,19 @@
-import { prisma } from "@/lib/prisma";
 import { authenticateRequest } from "@/lib/auth";
-import serverResponse, { InvalidUserResponse, unauthorizedResponse } from "@/utils/serverResponse";
+import {
+  NETWORKING_CONNECTION_STATUSES,
+  NETWORKING_OWNER_BATCH,
+  NETWORKING_PROFILE_ORDER,
+  NETWORKING_SENIOR_BATCHES,
+  canNetworkWithTarget,
+  getQuestionTypeForBatch,
+  serializeNetworkingType,
+  shouldApplyNetworkingDiscoverScope,
+} from "@/lib/networking";
+import { prisma } from "@/lib/prisma";
+import serverResponse, {
+  InvalidUserResponse,
+  unauthorizedResponse,
+} from "@/utils/serverResponse";
 import { NextRequest } from "next/server";
 
 type FriendRecord = {
@@ -13,16 +26,23 @@ type FriendRecord = {
   lineId: string | null;
   whatsappNumber: string | null;
   ConnectionReciever: { status: string }[];
+  ConnectionSender: { status: string }[];
   ConnectionRequestReciever: { status: string }[];
   ConnectionRequestSender: { status: string }[];
 };
 
-function serializeFriend({
-  ConnectionReciever,
-  ConnectionRequestReciever,
-  ConnectionRequestSender,
-  ...rest
-}: FriendRecord) {
+type Viewer = { batch: number; isAdmin: boolean };
+
+function serializeFriend(
+  {
+    ConnectionReciever,
+    ConnectionSender,
+    ConnectionRequestReciever,
+    ConnectionRequestSender,
+    ...profile
+  }: FriendRecord,
+  viewer: Viewer,
+) {
   let status = "not_connected";
   if (ConnectionReciever.length) {
     status = ConnectionReciever[0].status;
@@ -31,9 +51,30 @@ function serializeFriend({
   } else if (ConnectionRequestSender.length) {
     status = "meminta_konfirmasi";
   }
+
+  const questionType = getQuestionTypeForBatch(profile.batch);
+  const viewerCanNetwork = !viewer.isAdmin && viewer.batch === NETWORKING_OWNER_BATCH;
+  const mutualConnection = ConnectionReciever.length > 0 && ConnectionSender.length > 0;
+
   return {
-    ...rest,
+    ...profile,
     status,
+    canConnect:
+      viewerCanNetwork && profile.batch === NETWORKING_OWNER_BATCH,
+    canNetwork: canNetworkWithTarget(viewer, profile.batch, mutualConnection),
+    networkingType:
+      viewerCanNetwork && questionType
+        ? serializeNetworkingType(questionType)
+        : null,
+  };
+}
+
+function parseBatch(value: string | null) {
+  if (value === null) return { batch: undefined, valid: true };
+  const batch = Number(value);
+  return {
+    batch,
+    valid: Number.isInteger(batch) && batch >= 2023 && batch <= NETWORKING_OWNER_BATCH,
   };
 }
 
@@ -44,42 +85,77 @@ export async function GET(req: NextRequest) {
   } catch {
     return unauthorizedResponse();
   }
+
+  const viewer = await prisma.user.findUnique({
+    where: { id: userId },
+    select: { batch: true, isAdmin: true },
+  });
+  if (!viewer) return InvalidUserResponse;
+
   const searchParams = req.nextUrl.searchParams;
   const isPaginated = searchParams.has("page") || searchParams.has("limit");
   const page = Math.max(1, Number(searchParams.get("page")) || 1);
   const limit = Math.min(24, Math.max(1, Number(searchParams.get("limit")) || 12));
-  const paginationArgs: { skip?: number; take?: number } = isPaginated
-    ? { skip: (page - 1) * limit, take: limit }
-    : {};
+  const name = searchParams.get("name")?.trim();
+  const parsedBatch = parseBatch(searchParams.get("batch"));
+  const scope = searchParams.get("scope") ?? "all";
 
-  if (!searchParams.get("name")) {
-    try{
-      const where = {
-        id: {
-          not: {
-            equals: userId,
-          },
-        },
-        ...(isPaginated
-          ? {
-              isAdmin: false,
+  if (!parsedBatch.valid || !["all", "discover"].includes(scope)) {
+    return serverResponse({
+      success: false,
+      message: "Filter daftar profil tidak valid",
+      error: "INVALID_FRIEND_FILTER",
+      status: 400,
+    });
+  }
+
+  const useDiscoverScope = shouldApplyNetworkingDiscoverScope(viewer, scope);
+
+  const where = {
+    id: { not: userId },
+    isAdmin: false,
+    ...(name ? { fullname: { contains: name, mode: "insensitive" as const } } : {}),
+    ...(parsedBatch.batch ? { batch: parsedBatch.batch } : {}),
+    ...(useDiscoverScope
+      ? {
+          OR: [
+            // Kakak tingkat selalu dapat ditemukan untuk Networking langsung.
+            { batch: { in: [...NETWORKING_SENIOR_BATCHES] } },
+            {
+              batch: NETWORKING_OWNER_BATCH,
+              // Teman yang sudah terhubung berada di tab Teman Saya.
               ConnectionReciever: {
                 none: {
                   fromId: userId,
+                  status: { in: [...NETWORKING_CONNECTION_STATUSES] },
                 },
               },
-              ConnectionRequestSender: {
+              ConnectionSender: {
                 none: {
                   toId: userId,
+                  status: { in: [...NETWORKING_CONNECTION_STATUSES] },
                 },
               },
-            }
-          : {}),
-      };
-      const total = isPaginated ? await prisma.user.count({ where }) : undefined;
-      const friends = await prisma.user.findMany({
+              // Request masuk ditampilkan pada panel konfirmasi, bukan discovery.
+              ConnectionRequestSender: {
+                none: { toId: userId, status: "pending" },
+              },
+            },
+          ],
+        }
+      : {}),
+  };
+  const skip = isPaginated ? (page - 1) * limit : undefined;
+  const take = isPaginated ? limit : undefined;
+
+  try {
+    const [total, friends] = await Promise.all([
+      isPaginated ? prisma.user.count({ where }) : Promise.resolve(undefined),
+      prisma.user.findMany({
         where,
-        ...paginationArgs,
+        skip,
+        take,
+        orderBy: [...NETWORKING_PROFILE_ORDER],
         select: {
           id: true,
           email: true,
@@ -92,143 +168,51 @@ export async function GET(req: NextRequest) {
           ConnectionReciever: {
             where: {
               fromId: userId,
+              status: { in: [...NETWORKING_CONNECTION_STATUSES] },
             },
-            select: {
-              status: true,
-            },
+            select: { status: true },
           },
-          ConnectionRequestReciever: {
-            where: {
-              fromId: userId,
-            },
-            select: {
-              status: true,
-            },
-          },
-          ConnectionRequestSender: {
+          ConnectionSender: {
             where: {
               toId: userId,
+              status: { in: [...NETWORKING_CONNECTION_STATUSES] },
             },
-            select: {
-              status: true,
-            },
+            select: { status: true },
+          },
+          ConnectionRequestReciever: {
+            where: { fromId: userId, status: "pending" },
+            select: { status: true },
+          },
+          ConnectionRequestSender: {
+            where: { toId: userId, status: "pending" },
+            select: { status: true },
           },
         },
-      }) as FriendRecord[];
+      }),
+    ]);
 
-      const friends_response = {
-          friends: friends.map(serializeFriend),
-          ...(isPaginated
-            ? { pagination: { page, limit, total: total ?? 0, totalPages: Math.ceil((total ?? 0) / limit) } }
-            : {}),
-        }
-      return serverResponse({success: true, message: "Friends Succesfully retrieved", data: friends_response ,status: 200})
-    } catch {
-      return InvalidUserResponse;
-    }
-  }
-
-  const name = searchParams.get("name")!.trim();
-  const person = await prisma.user.findMany({
-    where: { fullname: { contains: name, mode: "insensitive" } },
-    select: { id: true },
-  }) as { id: number }[];
-  
-  if (!person?.length) {
     return serverResponse({
       success: true,
-      message: "Friends Succesfully retrieved but it is empty",
-      data: isPaginated
-        ? { friends: [], pagination: { page, limit, total: 0, totalPages: 0 } }
-        : { friends: [] },
-      status: 200,
-    })
-  }
-
-  try {
-    const where = {
-      AND: [
-        {
-          id: {
-            not: {
-              equals: userId,
-            },
-          },
-        },
-        {
-          id: {
-            in: person.map(({ id }) => id),
-          },
-        },
+      message: name
+        ? `Daftar profil dengan nama ${name} berhasil didapatkan`
+        : "Daftar profil berhasil didapatkan",
+      data: {
+        friends: (friends as FriendRecord[]).map((friend) =>
+          serializeFriend(friend, viewer),
+        ),
         ...(isPaginated
-          ? [
-              {
-                isAdmin: false,
+          ? {
+              pagination: {
+                page,
+                limit,
+                total: total ?? 0,
+                totalPages: Math.ceil((total ?? 0) / limit),
               },
-              {
-                ConnectionReciever: {
-                  none: {
-                    fromId: userId,
-                  },
-                },
-              },
-              {
-                ConnectionRequestSender: {
-                  none: {
-                    toId: userId,
-                  },
-                },
-              },
-            ]
-          : []),
-      ],
-    };
-    const total = isPaginated ? await prisma.user.count({ where }) : undefined;
-    const friends = await prisma.user.findMany({
-      where,
-      ...paginationArgs,
-      select: {
-        id: true,
-        email: true,
-        fullname: true,
-        faculty: true,
-        imgUrl: true,
-        batch: true,
-        lineId: true,
-        whatsappNumber: true,
-        ConnectionReciever: {
-          where: {
-            fromId: userId,
-          },
-          select: {
-            status: true,
-          },
-        },
-        ConnectionRequestReciever: {
-          where: {
-            fromId: userId,
-          },
-          select: {
-            status: true,
-          },
-        },
-        ConnectionRequestSender: {
-          where: {
-            toId: userId,
-          },
-          select: {
-            status: true,
-          },
-        },
-      },
-    }) as FriendRecord[];
-    const friends_response = {
-        friends: friends.map(serializeFriend),
-        ...(isPaginated
-          ? { pagination: { page, limit, total: total ?? 0, totalPages: Math.ceil((total ?? 0) / limit) } }
+            }
           : {}),
-      };
-    return serverResponse({success: true, message: `Friends Succesfully retrieved with name ${name}`, data: friends_response ,status: 200})
+      },
+      status: 200,
+    });
   } catch {
     return InvalidUserResponse;
   }
@@ -238,104 +222,26 @@ export async function GET(req: NextRequest) {
  * @swagger
  * /api/v1/friends:
  *   get:
- *     summary: Ambil daftar teman (selain diri sendiri, bisa search by name)
- *     description: |
- *       Endpoint ini membutuhkan JWT token pada header Authorization (format: Bearer &lt;token&gt;).
- *       Token akan divalidasi oleh middleware, dan userId akan diambil dari JWT.
- *       Jika diberikan query `name`, maka hasil akan difilter berdasarkan nama.
- *     tags:
- *       - Friends
+ *     summary: Ambil daftar profil peserta
+ *     description: Mendukung filter `name`, `batch`, dan `scope=discover`. Scope discovery menyaring teman terhubung/request masuk sebelum pagination untuk viewer 2026, tanpa membatasi profile browsing pengguna lain.
+ *     tags: [Friends]
  *     security:
  *       - bearerAuth: []
  *     parameters:
  *       - in: query
  *         name: name
- *         required: false
- *         schema:
- *           type: string
- *         description: Nama teman yang ingin dicari (opsional)
+ *         schema: { type: string }
+ *       - in: query
+ *         name: batch
+ *         schema: { type: integer, minimum: 2023, maximum: 2026 }
+ *       - in: query
+ *         name: scope
+ *         schema: { type: string, enum: [all, discover], default: all }
  *     responses:
  *       200:
- *         description: Berhasil mengambil daftar teman
- *         content:
- *           application/json:
- *             schema:
- *               type: object
- *               properties:
- *                 success:
- *                   type: boolean
- *                   example: true
- *                 message:
- *                   type: string
- *                   example: Friends Succesfully retrieved
- *                 data:
- *                   type: object
- *                   properties:
- *                     friends:
- *                       type: array
- *                       items:
- *                         type: object
- *                         properties:
- *                           id:
- *                             type: integer
- *                             example: 2
- *                           email:
- *                             type: string
- *                             example: danniel@email.com
- *                           fullname:
- *                             type: string
- *                             example: Danniel
- *                           faculty:
- *                             type: string
- *                             example: Ilmu Komputer
- *                           imgUrl:
- *                             type: string
- *                             example: https://example.com/avatar.jpg
- *                           batch:
- *                             type: integer
- *                             example: 2023
- *                           status:
- *                             type: string
- *                             example: not_connected
- *                 status:
- *                   type: integer
- *                   example: 200
+ *         description: Daftar profil berhasil didapatkan
  *       400:
- *         description: Header tidak ditemukan
- *         content:
- *           application/json:
- *             schema:
- *               type: object
- *               properties:
- *                 success:
- *                   type: boolean
- *                   example: false
- *                 message:
- *                   type: string
- *                   example: Not Authorized
- *                 error:
- *                   type: string
- *                   example: Headers tidak ditemukan
- *                 status:
- *                   type: integer
- *                   example: 400
- *       404:
- *         description: User tidak ditemukan
- *         content:
- *           application/json:
- *             schema:
- *               type: object
- *               properties:
- *                 success:
- *                   type: boolean
- *                   example: false
- *                 message:
- *                   type: string
- *                   example: Invalid
- *                 error:
- *                   type: string
- *                   example: User tidak ditemukan
- *                 status:
- *                   type: integer
- *                   example: 404
+ *         description: Filter angkatan tidak valid
+ *       401:
+ *         description: JWT tidak valid atau tidak ditemukan
  */

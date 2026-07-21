@@ -3,12 +3,15 @@ import {
   getEligibleNetworkingFriend,
   getNetworkingOverview,
   getNetworkingQuestions,
+  isValidNetworkingQuestionCatalog,
+  serializeNetworkingFriend,
   serializeNetworkingSubmission,
   serializeNetworkingQuestions,
 } from "@/lib/networking";
-import { NetworkingSubmissionSchema } from "@/lib/networkingContract";
+import { getNetworkingSubmissionSchema } from "@/lib/networkingContract";
 import { prisma } from "@/lib/prisma";
 import { taskDeadlineGuard } from "@/lib/taskDeadline";
+import { taskOwnerGuard } from "@/lib/taskOwner";
 import serverResponse, { unauthorizedResponse } from "@/utils/serverResponse";
 import { taskSubmissionErrorResponse } from "@/utils/taskSubmission";
 import { NextRequest } from "next/server";
@@ -41,7 +44,7 @@ async function ensureEligibleFriend(userId: number, friendId: number) {
     return {
       response: serverResponse({
         success: false,
-        message: "Networking hanya dapat dilakukan dengan teman yang sudah saling terhubung dari angkatan 2023-2026",
+        message: "Target kating harus dari angkatan 2023-2025; target sesama 2026 harus sudah saling berteman",
         error: "NETWORKING_FRIEND_NOT_ELIGIBLE",
         status: 403,
       }),
@@ -63,6 +66,9 @@ export async function GET(
     return unauthorizedResponse();
   }
 
+  const ownerResponse = await taskOwnerGuard(userId);
+  if (ownerResponse) return ownerResponse;
+
   const friendId = parseFriendId((await props.params).friendId);
   if (!friendId) {
     return serverResponse({
@@ -76,14 +82,18 @@ export async function GET(
   const eligibility = await ensureEligibleFriend(userId, friendId);
   if (eligibility.response) return eligibility.response;
 
-  const overview = await getNetworkingOverview(userId);
+  const [overview, questions] = await Promise.all([
+    getNetworkingOverview(userId),
+    getNetworkingQuestions(eligibility.friend!.questionType),
+  ]);
 
   return serverResponse({
     success: true,
     message: "Detail Networking berhasil didapatkan",
     data: {
-      friend: eligibility.friend,
-      questions: overview.questions,
+      friend: serializeNetworkingFriend(eligibility.friend!),
+      networkingType: eligibility.friend!.questionType === "PEER" ? "peer" : "senior",
+      questions: serializeNetworkingQuestions(questions),
       submission:
         overview.submissions.find(({ friend }) => friend.id === friendId) ?? null,
       progress: overview.progress,
@@ -103,6 +113,8 @@ export async function PUT(
     return unauthorizedResponse();
   }
 
+  const ownerResponse = await taskOwnerGuard(userId);
+  if (ownerResponse) return ownerResponse;
   const deadlineResponse = taskDeadlineGuard("networking");
   if (deadlineResponse) return deadlineResponse;
 
@@ -120,14 +132,14 @@ export async function PUT(
     const eligibility = await ensureEligibleFriend(userId, friendId);
     if (eligibility.response) return eligibility.response;
 
-    const [body, questions] = await Promise.all([
-      req.json().then((value) => NetworkingSubmissionSchema.parse(value)),
-      getNetworkingQuestions(),
-    ]);
+    const questions = await getNetworkingQuestions(eligibility.friend!.questionType);
+    const body = getNetworkingSubmissionSchema(
+      eligibility.friend!.questionType,
+    ).parse(await req.json());
     const fixedQuestions = questions.filter(({ isCustom }) => !isCustom);
     const customQuestions = questions.filter(({ isCustom }) => isCustom);
 
-    if (fixedQuestions.length !== 3 || customQuestions.length !== 1) {
+    if (!isValidNetworkingQuestionCatalog(questions, eligibility.friend!.questionType)) {
       console.error("Katalog pertanyaan Networking tidak valid", {
         fixed: fixedQuestions.length,
         custom: customQuestions.length,
@@ -202,7 +214,8 @@ export async function PUT(
       success: true,
       message: "Jawaban Networking berhasil disimpan",
       data: {
-        friend: eligibility.friend,
+        friend: serializeNetworkingFriend(eligibility.friend!),
+        networkingType: eligibility.friend!.questionType === "PEER" ? "peer" : "senior",
         questions: serializeNetworkingQuestions(questions),
         submission: serializeNetworkingSubmission(submission),
         progress: overview.progress,
@@ -253,7 +266,7 @@ export async function PUT(
  *               answers:
  *                 type: array
  *                 minItems: 3
- *                 maxItems: 3
+ *                 maxItems: 5
  *                 items:
  *                   type: object
  *                   required: [question_id, answer]
@@ -274,5 +287,5 @@ export async function PUT(
  *       401:
  *         description: JWT tidak valid atau tidak ditemukan
  *       403:
- *         description: Deadline terlewati atau pertemanan tidak eligible
+ *         description: Deadline terlewati, bukan peserta 2026, atau target tidak eligible
  */

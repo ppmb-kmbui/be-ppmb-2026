@@ -1,4 +1,9 @@
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
+import {
+  isEligibleTaskOwner,
+  taskOwnerForbiddenResponse,
+} from "../src/lib/taskOwner";
 import {
   googleDocsResourceId,
   isGoogleDriveResourceUrl,
@@ -38,4 +43,46 @@ assert.equal(
   urlResourceKey("https://example.com/task.pdf?version=2#preview"),
 );
 
-console.log("Validator kontrak task lulus.");
+assert.equal(isEligibleTaskOwner({ batch: 2026, isAdmin: false }), true);
+assert.equal(isEligibleTaskOwner({ batch: 2025, isAdmin: false }), false);
+assert.equal(isEligibleTaskOwner({ batch: 2026, isAdmin: true }), false);
+
+const forbiddenResponse = taskOwnerForbiddenResponse();
+assert.equal(forbiddenResponse.status, 403);
+assert.deepEqual(await forbiddenResponse.json(), {
+  success: false,
+  status: 403,
+  message: "Fitur tugas hanya tersedia untuk peserta angkatan 2026",
+  error: "TASKS_FOR_2026_ONLY",
+});
+
+const taskRoutePaths = [
+  "../src/app/api/v1/tasks/route.ts",
+  "../src/app/api/v1/tasks/explorer/route.ts",
+  "../src/app/api/v1/tasks/fossib/route.ts",
+  "../src/app/api/v1/tasks/insight-hunting/route.ts",
+  "../src/app/api/v1/tasks/mentoring/route.ts",
+  "../src/app/api/v1/tasks/mentoring/videos/route.ts",
+  "../src/app/api/v1/tasks/networking/route.ts",
+  "../src/app/api/v1/tasks/networking/[friendId]/route.ts",
+];
+
+let protectedTaskHandlers = 0;
+for (const routePath of taskRoutePaths) {
+  const source = readFileSync(new URL(routePath, import.meta.url), "utf8");
+  const handlers = source.match(
+    /export async function (?:GET|POST|PUT|PATCH|DELETE)\s*\(/g,
+  ) ?? [];
+  const guards = source.match(/taskOwnerGuard\(userId\)/g) ?? [];
+
+  assert.equal(
+    guards.length,
+    handlers.length,
+    `${routePath} harus memanggil taskOwnerGuard untuk setiap handler`,
+  );
+  protectedTaskHandlers += handlers.length;
+}
+
+assert.equal(protectedTaskHandlers, 13);
+
+console.log(`Validator kontrak task lulus; ${protectedTaskHandlers} handler dibatasi ke peserta 2026.`);

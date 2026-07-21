@@ -36,3 +36,9 @@ yarn-error.log*
 *.tsbuildinfo
 next-env.d.ts
 .env
+
+# private production seed tooling and source data
+/prisma/seed.ts
+/prisma/seed-*.ts
+/scripts/check-seed-source.ts
+/scripts/verify-seed.ts

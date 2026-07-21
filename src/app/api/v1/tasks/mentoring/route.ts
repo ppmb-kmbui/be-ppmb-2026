@@ -5,6 +5,7 @@ import { isGoogleDriveResourceUrl, taskSubmissionErrorResponse } from "@/utils/t
 import { NextRequest } from "next/server";
 import { z } from "zod";
 import { taskDeadlineGuard } from "@/lib/taskDeadline";
+import { taskOwnerGuard } from "@/lib/taskOwner";
 
 const GdriveUrlSchema = z.string().trim().url("Link Google Drive tidak valid").refine(
   (value) => isGoogleDriveResourceUrl(value),
@@ -27,6 +28,9 @@ async function getUserId(req: NextRequest) {
 export async function GET(req: NextRequest) {
   const userId = await getUserId(req);
   if (!userId) return unauthorizedResponse();
+  const ownerResponse = await taskOwnerGuard(userId);
+  if (ownerResponse) return ownerResponse;
+
   const [submission, reflection, vlog] = await Promise.all([
     prisma.mentoringSubmission.findUnique({ where: { userId } }),
     prisma.mentoringReflection.findUnique({ where: { userId } }),
@@ -60,6 +64,8 @@ export async function POST(req: NextRequest) {
   const userId = await getUserId(req);
   if (!userId) return unauthorizedResponse();
 
+  const ownerResponse = await taskOwnerGuard(userId);
+  if (ownerResponse) return ownerResponse;
   const deadlineResponse = taskDeadlineGuard("mentoring");
   if (deadlineResponse) return deadlineResponse;
 

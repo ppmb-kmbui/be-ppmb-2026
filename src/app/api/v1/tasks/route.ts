@@ -1,6 +1,7 @@
 import { authenticateRequest } from "@/lib/auth";
 import { getNetworkingOverview } from "@/lib/networking";
 import { prisma } from "@/lib/prisma";
+import { taskOwnerGuard } from "@/lib/taskOwner";
 import serverResponse, { unauthorizedResponse } from "@/utils/serverResponse";
 import {
   isGoogleDriveResourceUrl,
@@ -23,6 +24,9 @@ export async function GET(req: NextRequest) {
   } catch {
     return unauthorizedResponse();
   }
+
+  const ownerResponse = await taskOwnerGuard(userId);
+  if (ownerResponse) return ownerResponse;
 
   const [
     networking,

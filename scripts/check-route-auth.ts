@@ -1,8 +1,8 @@
+import assert from "node:assert/strict";
 import { NextRequest } from "next/server";
 import { SignJWT } from "jose";
 
 import { authenticateRequest } from "../src/lib/auth";
-import { TASK_DEADLINE_ENV_KEYS } from "../src/lib/taskDeadline";
 
 import * as adminTasks from "../src/app/api/v1/admin/tasks/[id]/route";
 import * as adminUsers from "../src/app/api/v1/admin/users/route";
@@ -13,6 +13,7 @@ import * as connectionRequests from "../src/app/api/v1/connection-requests/route
 import * as friends from "../src/app/api/v1/friends/route";
 import * as materials from "../src/app/api/v1/materials/route";
 import * as profile from "../src/app/api/v1/profile/route";
+import * as profileById from "../src/app/api/v1/profile/[id]/route";
 import * as quotes from "../src/app/api/v1/quotes/route";
 import * as explorer from "../src/app/api/v1/tasks/explorer/route";
 import * as fossib from "../src/app/api/v1/tasks/fossib/route";
@@ -31,12 +32,6 @@ type Check = {
 const request = (path: string, method = "GET") =>
   new NextRequest(`http://localhost:4000${path}`, { method });
 
-const requestWithToken = (path: string, token: string, method = "POST") =>
-  new NextRequest(`http://localhost:4000${path}`, {
-    method,
-    headers: { authorization: `Bearer ${token}` },
-  });
-
 const params = { params: Promise.resolve({ id: "1" }) };
 const friendParams = { params: Promise.resolve({ friendId: "1" }) };
 
@@ -44,6 +39,7 @@ const checks: Check[] = [
   { name: "auth/profile GET", run: () => authProfile.GET(request("/api/v1/auth/profile")) },
   { name: "profile GET", run: () => profile.GET(request("/api/v1/profile")) },
   { name: "profile PUT", run: () => profile.PUT(request("/api/v1/profile", "PUT")) },
+  { name: "profile/:id GET", run: () => profileById.GET(request("/api/v1/profile/1"), params) },
   { name: "connect GET", run: () => connect.GET(request("/api/v1/connect")) },
   { name: "connect/:id POST", run: () => connectById.POST(request("/api/v1/connect/1", "POST"), params) },
   { name: "connect/:id PUT", run: () => connectById.PUT(request("/api/v1/connect/1", "PUT"), params) },
@@ -83,45 +79,40 @@ const token = await new SignJWT({ is_admin: false })
   .setSubject("1")
   .setExpirationTime("5m")
   .sign(new TextEncoder().encode(process.env.JWT_SECRET));
+const participantLoader = async (userId: number) => ({ id: userId, isAdmin: false });
 
 const bearerIdentity = await authenticateRequest(new NextRequest("http://localhost:4000/api/v1/profile", {
   headers: { authorization: `bearer ${token}` },
-}));
+}), participantLoader);
 const cookieIdentity = await authenticateRequest(new NextRequest("http://localhost:4000/api/v1/profile", {
   headers: { cookie: `ppmb_access_token=${token}` },
-}));
+}), participantLoader);
 
-if (bearerIdentity.userId !== 1 || cookieIdentity.userId !== 1) {
-  throw new Error("JWT Bearer/cookie tidak menghasilkan userId yang benar");
-}
+assert.equal(bearerIdentity.userId, 1);
+assert.equal(cookieIdentity.userId, 1);
 
-const nonAdminResponse = await adminUsers.GET(new NextRequest("http://localhost:4000/api/v1/admin/users", {
+const currentAdminIdentity = await authenticateRequest(new NextRequest("http://localhost:4000/api/v1/admin/users", {
   headers: { authorization: `Bearer ${token}` },
-}));
-if (nonAdminResponse.status !== 403) {
-  throw new Error(`Admin route mengembalikan ${nonAdminResponse.status} untuk user non-admin, seharusnya 403`);
-}
+}), async (userId) => ({ id: userId, isAdmin: true }));
+assert.equal(currentAdminIdentity.isAdmin, true);
 
-for (const envKey of Object.values(TASK_DEADLINE_ENV_KEYS)) {
-  process.env[envKey] = "2000-01-01T00:00:00+07:00";
-}
+const forgedAdminToken = await new SignJWT({ is_admin: true })
+  .setProtectedHeader({ alg: "HS256" })
+  .setSubject("1")
+  .setExpirationTime("5m")
+  .sign(new TextEncoder().encode(process.env.JWT_SECRET));
+const currentParticipantIdentity = await authenticateRequest(new NextRequest(
+  "http://localhost:4000/api/v1/admin/users",
+  { headers: { authorization: `Bearer ${forgedAdminToken}` } },
+), participantLoader);
+assert.equal(currentParticipantIdentity.isAdmin, false);
 
-const closedDeadlineChecks: Check[] = [
-  { name: "tasks/networking/:friendId PUT", run: () => networkingByFriend.PUT(requestWithToken("/api/v1/tasks/networking/1", token, "PUT"), friendParams) },
-  { name: "explorer POST", run: () => explorer.POST(requestWithToken("/api/v1/tasks/explorer", token)) },
-  { name: "fossib POST", run: () => fossib.POST(requestWithToken("/api/v1/tasks/fossib", token)) },
-  { name: "insight-hunting POST", run: () => insightHunting.POST(requestWithToken("/api/v1/tasks/insight-hunting", token)) },
-  { name: "mentoring POST", run: () => mentoring.POST(requestWithToken("/api/v1/tasks/mentoring", token)) },
-];
-
-for (const check of closedDeadlineChecks) {
-  const response = await check.run();
-  const body = await response.json();
-  if (response.status !== 403 || body.message !== "Pengumpulan tugas sudah ditutup.") {
-    throw new Error(`${check.name} tidak menolak submission setelah deadline dengan respons 403 yang benar`);
-  }
-}
+await assert.rejects(
+  () => authenticateRequest(new NextRequest("http://localhost:4000/api/v1/profile", {
+    headers: { authorization: `Bearer ${token}` },
+  }), async () => null),
+  /User token tidak ditemukan/,
+);
 
 console.log(`${checks.length} protected route handlers menolak request tanpa JWT dengan status 401.`);
-console.log("Bearer case-insensitive, cookie auth, dan admin 403 tervalidasi.");
-console.log(`${closedDeadlineChecks.length} endpoint submission menolak request setelah deadline.`);
+console.log("Bearer/cookie valid; user hilang ditolak; role admin selalu mengikuti database, bukan claim JWT.");

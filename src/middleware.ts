@@ -1,10 +1,12 @@
 import { NextRequest, NextResponse } from "next/server";
 import serverResponse from "./utils/serverResponse";
-import { getAccessToken, verifyAccessToken } from "./lib/auth";
+import { getAccessToken, verifyAccessToken } from "./lib/authToken";
 
 const allowedOrigins = new Set([
   "https://ppmbkmbui.com",
   "https://www.ppmbkmbui.com",
+  "https://ppmbkmbui.net",
+  "https://www.ppmbkmbui.net",
 ]);
 
 const publicRoutes = new Set([
