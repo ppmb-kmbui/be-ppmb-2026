@@ -12,6 +12,14 @@ enum NetworkingQuestionType {
   SENIOR
 }
 
+enum TaskReviewType {
+  NETWORKING
+  EXPLORER
+  MENTORING
+  FOSSIB
+  INSIGHT_HUNTING
+}
+
 model User {
   id                            Int                             @id @default(autoincrement())
   email                         String                          @unique
@@ -40,6 +48,8 @@ model User {
   ExplorerSubmission            ExplorerSubmission[]
   MentoringVlogSubmission       MentoringVlogSubmission[]
   MentoringReflection           MentoringReflection[]
+  TaskReviewsReceived           TaskReview[]                    @relation("TaskReviewParticipant")
+  TaskReviewsAuthored           TaskReview[]                    @relation("TaskReviewReviewer")
 
   @@index([isAdmin], map: "users_is_admin_idx")
   @@map("users")
@@ -92,13 +102,13 @@ model NetworkingSubmission {
 }
 
 model NetworkingQuestion {
-  id           Int                       @id @default(autoincrement())
-  questionType NetworkingQuestionType    @default(PEER) @map("question_type")
+  id           Int                    @id @default(autoincrement())
+  questionType NetworkingQuestionType @default(PEER) @map("question_type")
   code         String
   prompt       String
   position     Int
-  isCustom     Boolean                   @default(false) @map("is_custom")
-  isActive     Boolean                   @default(true) @map("is_active")
+  isCustom     Boolean                @default(false) @map("is_custom")
+  isActive     Boolean                @default(true) @map("is_active")
   answers      NetworkingAnswer[]
 
   @@unique([questionType, code])
@@ -186,6 +196,23 @@ model MentoringSubmission {
   updatedAt DateTime @default(now()) @updatedAt @map("updated_at")
 
   @@map("mentoring_submissions")
+}
+
+model TaskReview {
+  id            Int            @id @default(autoincrement())
+  participant   User           @relation("TaskReviewParticipant", fields: [participantId], references: [id], onDelete: Cascade)
+  participantId Int            @map("participant_id")
+  taskType      TaskReviewType @map("task_type")
+  score         Int
+  feedback      String?
+  reviewer      User           @relation("TaskReviewReviewer", fields: [reviewerId], references: [id], onDelete: Restrict)
+  reviewerId    Int            @map("reviewer_id")
+  reviewedAt    DateTime       @default(now()) @map("reviewed_at")
+  updatedAt     DateTime       @default(now()) @updatedAt @map("updated_at")
+
+  @@unique([participantId, taskType])
+  @@index([reviewerId], map: "task_reviews_reviewer_id_idx")
+  @@map("task_reviews")
 }
 
 model MentoringReflection {

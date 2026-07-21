@@ -5,6 +5,7 @@ import { SignJWT } from "jose";
 import { authenticateRequest } from "../src/lib/auth";
 
 import * as adminTasks from "../src/app/api/v1/admin/tasks/[id]/route";
+import * as adminTaskReview from "../src/app/api/v1/admin/tasks/[id]/reviews/[taskType]/route";
 import * as adminUsers from "../src/app/api/v1/admin/users/route";
 import * as authProfile from "../src/app/api/v1/auth/profile/route";
 import * as connect from "../src/app/api/v1/connect/route";
@@ -34,6 +35,7 @@ const request = (path: string, method = "GET") =>
 
 const params = { params: Promise.resolve({ id: "1" }) };
 const friendParams = { params: Promise.resolve({ friendId: "1" }) };
+const reviewParams = { params: Promise.resolve({ id: "1", taskType: "networking" }) };
 
 const checks: Check[] = [
   { name: "auth/profile GET", run: () => authProfile.GET(request("/api/v1/auth/profile")) },
@@ -64,6 +66,13 @@ const checks: Check[] = [
   { name: "mentoring/videos GET", run: () => mentoringVideos.GET(request("/api/v1/tasks/mentoring/videos")) },
   { name: "admin/users GET", run: () => adminUsers.GET(request("/api/v1/admin/users")) },
   { name: "admin/tasks/:id GET", run: () => adminTasks.GET(request("/api/v1/admin/tasks/1"), params) },
+  {
+    name: "admin/tasks/:id/reviews/:taskType PUT",
+    run: () => adminTaskReview.PUT(
+      request("/api/v1/admin/tasks/1/reviews/networking", "PUT"),
+      reviewParams,
+    ),
+  },
 ];
 
 for (const check of checks) {

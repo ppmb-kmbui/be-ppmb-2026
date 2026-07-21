@@ -1,6 +1,16 @@
 import { authenticateRequest } from "@/lib/auth";
-import { getNetworkingOverview } from "@/lib/networking";
+import { CURRENT_BATCH } from "@/lib/const";
+import {
+  findNetworkingSubmissions,
+  getNetworkingOverview,
+  serializeNetworkingSubmission,
+} from "@/lib/networking";
 import { prisma } from "@/lib/prisma";
+import {
+  serializeTaskReview,
+  TASK_REVIEW_SLUGS,
+  taskReviewTypeFromSlug,
+} from "@/lib/taskReviewContract";
 import serverResponse, { forbiddenResponse, unauthorizedResponse } from "@/utils/serverResponse";
 import {
   isGoogleDriveResourceUrl,
@@ -34,24 +44,37 @@ export async function GET(req: NextRequest, props: { params: Promise<{ id: strin
 
   const user = await prisma.user.findUnique({
     where: { id: userId },
-    select: { id: true, fullname: true, email: true, imgUrl: true, faculty: true, batch: true, lineId: true, whatsappNumber: true },
+    select: {
+      id: true,
+      fullname: true,
+      email: true,
+      imgUrl: true,
+      faculty: true,
+      batch: true,
+      lineId: true,
+      whatsappNumber: true,
+      isAdmin: true,
+    },
   });
 
   if (!user) {
     return serverResponse({ success: false, message: "User tidak ditemukan", error: "USER_NOT_FOUND", status: 404 });
   }
 
-  if (user.batch !== 2026) {
+  if (user.isAdmin || user.batch !== CURRENT_BATCH) {
     return serverResponse({
       success: false,
-      message: "Pengguna ini bukan peserta tugas PPMB 2026",
+      message: `Pengguna ini bukan peserta tugas PPMB ${CURRENT_BATCH}`,
       error: "USER_NOT_PPMB_2026_PARTICIPANT",
       status: 403,
     });
   }
 
+  const { isAdmin: _isAdmin, ...participant } = user;
+
   const [
     networking,
+    storedNetworkingSubmissions,
     fossib,
     insightHunting,
     mentoring,
@@ -60,8 +83,10 @@ export async function GET(req: NextRequest, props: { params: Promise<{ id: strin
     legacyMentoringReflection,
     legacyFirstFossib,
     legacySecondFossib,
+    taskReviews,
   ] = await Promise.all([
     getNetworkingOverview(userId),
+    findNetworkingSubmissions(userId),
     prisma.fossibSubmission.findUnique({ where: { userId } }),
     prisma.insightHuntingSubmission.findUnique({ where: { userId } }),
     prisma.mentoringSubmission.findUnique({ where: { userId } }),
@@ -70,6 +95,14 @@ export async function GET(req: NextRequest, props: { params: Promise<{ id: strin
     prisma.mentoringReflection.findUnique({ where: { userId } }),
     prisma.firstFossibSessionSubmission.findUnique({ where: { userId } }),
     prisma.secondFossibSessionSubmission.findUnique({ where: { userId } }),
+    prisma.taskReview.findMany({
+      where: { participantId: userId },
+      include: {
+        reviewer: {
+          select: { id: true, fullname: true, email: true },
+        },
+      },
+    }),
   ]);
 
   const networkingCompleted = networking.progress.completed;
@@ -98,13 +131,34 @@ export async function GET(req: NextRequest, props: { params: Promise<{ id: strin
     ...networking.questionSets.peer,
     ...networking.questionSets.senior,
   ];
+  const networkingSubmissions = storedNetworkingSubmissions.map((submission) => {
+    const serialized = serializeNetworkingSubmission(submission);
+    const promptsByQuestionId = new Map(
+      submission.answers.map(({ questionId, question }) => [questionId, question.prompt]),
+    );
+    return {
+      ...serialized,
+      answers: serialized.answers.map((answer) => ({
+        ...answer,
+        prompt: promptsByQuestionId.get(answer.questionId) ?? null,
+      })),
+    };
+  });
+  const reviews = Object.fromEntries(
+    TASK_REVIEW_SLUGS.map((taskType) => {
+      const databaseType = taskReviewTypeFromSlug(taskType);
+      const review = taskReviews.find((item) => item.taskType === databaseType);
+      return [taskType, review ? serializeTaskReview(review) : null];
+    }),
+  );
 
   return serverResponse({
     success: true,
     message: "Detail tugas user berhasil didapatkan",
     data: {
-      user,
+      user: participant,
       status,
+      reviews,
       progress: {
         networking: {
           completed: networkingCompleted,
@@ -146,13 +200,9 @@ export async function GET(req: NextRequest, props: { params: Promise<{ id: strin
         },
       },
       submissions: {
-        networking: networking.submissions.map((submission) => ({
-          ...submission,
-          answers: submission.answers.map((answer) => ({
-            ...answer,
-            prompt: networkingQuestions.find(({ id }) => id === answer.questionId)?.prompt ?? null,
-          })),
-        })),
+        // Fetch independently from current friendship eligibility so work that
+        // was already saved remains visible to reviewers if a connection changes.
+        networking: networkingSubmissions,
         // Flat catalog retained for older admin clients.
         networkingQuestions,
         networkingQuestionSets: networking.questionSets,

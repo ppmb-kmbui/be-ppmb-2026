@@ -193,3 +193,23 @@ Backend memvalidasi bentuk URL, bukan isi byte file. Tipe file sebenarnya harus 
 | Insight Hunting | 0-1 | 1 |
 
 Endpoint tersebut masih mengembalikan beberapa field compatibility yang dibaca frontend saat ini, seperti `networkingAngkatan`, `networkingKating`, `firstFossibDone`, `secondFossibDone`, dan `mentoringReflectionDone`. Field Networking compatibility sekarang mengikuti quota 10/4/2/2; gunakan `cards` dan endpoint canonical di atas untuk integrasi baru.
+
+## Penilaian admin
+
+Admin dapat melihat submission dan review peserta melalui:
+
+- `GET /api/v1/admin/tasks/{participantId}`
+- `PUT /api/v1/admin/tasks/{participantId}/reviews/{taskType}`
+
+Nilai `taskType` yang didukung adalah `networking`, `explorer`, `mentoring`, `fossib`, dan `insight-hunting`. Networking dinilai satu kali untuk keseluruhan 18 wawancara. Request penilaian:
+
+```json
+{
+  "score": 90,
+  "feedback": "Pekerjaan lengkap dan jelas."
+}
+```
+
+Nilai harus berupa integer `0-100`, feedback bersifat opsional, dan tugas harus sudah lengkap menurut kontrak progress di atas. Identitas reviewer selalu diambil dari JWT admin aktif; client tidak dapat memilih `reviewerId`. Penilaian ulang mengganti nilai, feedback, waktu pemeriksaan, dan reviewer dengan admin terakhir.
+
+Response detail admin memiliki object `reviews` yang selalu memuat kelima task type. Value-nya `null` jika belum dinilai, atau berisi `taskType`, `score`, `feedback`, `reviewedAt`, dan `reviewer` (`id`, `fullname`, `email`). Endpoint peserta tidak mengembalikan data review.

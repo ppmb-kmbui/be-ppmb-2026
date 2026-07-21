@@ -17,7 +17,8 @@
     "test:faculty-routes": "tsx scripts/check-faculty-routes.ts",
     "test:task-deadlines": "tsx scripts/check-task-deadlines.ts",
     "test:task-contracts": "tsx scripts/check-task-contracts.ts",
-    "test:networking": "tsx scripts/check-networking-contract.ts"
+    "test:networking": "tsx scripts/check-networking-contract.ts",
+    "test:admin-reviews": "tsx scripts/check-admin-reviews.ts"
   },
   "dependencies": {
     "@prisma/adapter-pg": "7.8.0",
