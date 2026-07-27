@@ -6,12 +6,12 @@ export type { AuthIdentity } from "@/lib/authToken";
 
 export type AuthUserLoader = (
   userId: number,
-) => Promise<{ id: number; isAdmin: boolean } | null>;
+) => Promise<{ id: number; isAdmin: boolean; isSuperAdmin: boolean } | null>;
 
 async function loadCurrentAuthUser(userId: number) {
   return prisma.user.findUnique({
     where: { id: userId },
-    select: { id: true, isAdmin: true },
+    select: { id: true, isAdmin: true, isSuperAdmin: true },
   });
 }
 
@@ -30,8 +30,9 @@ export async function authenticateRequest(
   return {
     ...verified,
     userId: currentUser.id,
-    // Authorization always follows current DB state. The token claim is never
-    // trusted for admin access because roles can change before token expiry.
+    // Authorization always follows current DB state. Token claims are never
+    // trusted for privileged access because roles can change before expiry.
     isAdmin: currentUser.isAdmin,
+    isSuperAdmin: currentUser.isSuperAdmin,
   };
 }

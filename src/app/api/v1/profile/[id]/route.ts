@@ -1,6 +1,7 @@
 import { authenticateRequest } from "@/lib/auth";
 import { NETWORKING_CONNECTION_STATUSES } from "@/lib/networking";
 import { prisma } from "@/lib/prisma";
+import { VISIBLE_PROFILE_WHERE } from "@/lib/profileVisibility";
 import serverResponse, { unauthorizedResponse } from "@/utils/serverResponse";
 import { NextRequest } from "next/server";
 
@@ -25,7 +26,7 @@ export async function GET(
   }
 
   const profile = await prisma.user.findFirst({
-    where: { id: targetId, isAdmin: false },
+    where: { id: targetId, isAdmin: false, ...VISIBLE_PROFILE_WHERE },
     select: {
       id: true,
       fullname: true,

@@ -1,6 +1,7 @@
 import { prisma } from "@/lib/prisma";
 import { authenticateRequest } from "@/lib/auth";
 import { isFriendshipPairAllowed } from "@/lib/networking";
+import { VISIBLE_PROFILE_WHERE } from "@/lib/profileVisibility";
 import serverResponse, { InvalidTargetUserResponse, unauthorizedResponse } from "@/utils/serverResponse";
 import { NextRequest } from "next/server";
 
@@ -15,7 +16,12 @@ async function friendshipEligibility(userId: number, targetId: number) {
   }
 
   const users = await prisma.user.findMany({
-    where: { id: { in: [userId, targetId] } },
+    where: {
+      OR: [
+        { id: userId },
+        { id: targetId, ...VISIBLE_PROFILE_WHERE },
+      ],
+    },
     select: { id: true, batch: true, isAdmin: true },
   });
   const actor = users.find(({ id }) => id === userId);
@@ -183,8 +189,8 @@ export async function DELETE(req: NextRequest, props: { params: Promise<{ id: st
   }
   const eligibilityResponse = await friendshipEligibility(userId, targetId);
   if (eligibilityResponse) return eligibilityResponse;
-  const targetUser = await prisma.user.findUnique({
-    where: { id: targetId },
+  const targetUser = await prisma.user.findFirst({
+    where: { id: targetId, ...VISIBLE_PROFILE_WHERE },
   });
 
   if (!targetUser) {

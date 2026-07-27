@@ -1,4 +1,8 @@
 import { prisma } from "@/lib/prisma";
+import {
+  VISIBLE_PROFILE_WHERE,
+  isProfileVisible,
+} from "@/lib/profileVisibility";
 import { getTaskOwner } from "@/lib/taskOwner";
 import { isImageUrl } from "@/utils/taskSubmission";
 
@@ -136,11 +140,17 @@ const networkingFriendSelect = {
   batch: true,
 } as const;
 
+const storedNetworkingFriendSelect = {
+  ...networkingFriendSelect,
+  isProfileHidden: true,
+} as const;
+
 export async function getEligibleNetworkingFriends(userId: number) {
   const friends = await prisma.user.findMany({
     where: {
       id: { not: userId },
       isAdmin: false,
+      ...VISIBLE_PROFILE_WHERE,
       OR: [
         {
           batch: NETWORKING_OWNER_BATCH,
@@ -164,6 +174,7 @@ export async function getEligibleNetworkingFriend(userId: number, friendId: numb
     where: {
       id: friendId,
       isAdmin: false,
+      ...VISIBLE_PROFILE_WHERE,
       OR: [
         {
           batch: NETWORKING_OWNER_BATCH,
@@ -240,6 +251,7 @@ export function isCompleteNetworkingSubmission(
 
 export function serializeNetworkingSubmission(submission: SubmissionWithDetails) {
   const questionType = getQuestionTypeForBatch(submission.friend.batch);
+  const { isProfileHidden: _isProfileHidden, ...friend } = submission.friend;
   const answers = [...submission.answers]
     .sort((left, right) => left.question.position - right.question.position)
     .map(({ questionId, answer, customQuestion }) => ({
@@ -250,13 +262,19 @@ export function serializeNetworkingSubmission(submission: SubmissionWithDetails)
 
   return {
     id: submission.id,
-    friend: submission.friend,
+    friend,
     networkingType: questionType ? serializeNetworkingType(questionType) : null,
     photoUrl: submission.photoUrl,
     answers,
     createdAt: submission.createdAt,
     updatedAt: submission.updatedAt,
   };
+}
+
+export function isNetworkingSubmissionProfileVisible(
+  submission: SubmissionWithDetails,
+) {
+  return isProfileVisible(submission.friend);
 }
 
 export async function findNetworkingSubmissions(userId: number, friendIds?: number[]) {
@@ -266,7 +284,7 @@ export async function findNetworkingSubmissions(userId: number, friendIds?: numb
       ...(friendIds ? { friendId: { in: friendIds } } : {}),
     },
     include: {
-      friend: { select: networkingFriendSelect },
+      friend: { select: storedNetworkingFriendSelect },
       answers: { include: { question: true } },
     },
     orderBy: [{ friend: { batch: "desc" } }, { friendId: "asc" }],
@@ -352,10 +370,17 @@ export async function getNetworkingOverview(userId: number) {
     };
   }
 
-  const friends = await getEligibleNetworkingFriends(userId);
-  const submissions = await findNetworkingSubmissions(
-    userId,
-    friends.map(({ id }) => id),
+  const [friends, submissions] = await Promise.all([
+    getEligibleNetworkingFriends(userId),
+    // Historical records remain authoritative for progress even if their
+    // target is later hidden. Identity-bearing response data is filtered below.
+    findNetworkingSubmissions(userId),
+  ]);
+  const eligibleFriendIds = new Set(friends.map(({ id }) => id));
+  const visibleEligibleSubmissions = submissions.filter(
+    (submission) =>
+      eligibleFriendIds.has(submission.friendId) &&
+      isNetworkingSubmissionProfileVisible(submission),
   );
   const activeQuestionIdsByType: ActiveQuestionIdsByType = {
     PEER: new Set(
@@ -390,7 +415,7 @@ export async function getNetworkingOverview(userId: number) {
       updatedAt:
         submissions.find(({ friendId }) => friendId === friend.id)?.updatedAt ?? null,
     })),
-    submissions: submissions.map(serializeNetworkingSubmission),
+    submissions: visibleEligibleSubmissions.map(serializeNetworkingSubmission),
     progress: calculateNetworkingProgress(submissions, activeQuestionIdsByType),
   };
 }

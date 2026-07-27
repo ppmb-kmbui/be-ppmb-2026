@@ -8,17 +8,24 @@ import {
   NETWORKING_PROFILE_ORDER,
   NETWORKING_REQUIRED_TOTAL,
   canNetworkWithTarget,
+  calculateNetworkingProgress,
   calculateNetworkingProgressFromBatches,
   getQuestionTypeForBatch,
   isFriendshipPairAllowed,
   isCompleteNetworkingSubmission,
+  isNetworkingSubmissionProfileVisible,
   isValidNetworkingQuestionCatalog,
+  serializeNetworkingSubmission,
   shouldApplyNetworkingDiscoverScope,
 } from "../src/lib/networking";
 import {
   PeerNetworkingSubmissionSchema,
   SeniorNetworkingSubmissionSchema,
 } from "../src/lib/networkingContract";
+import {
+  VISIBLE_PROFILE_WHERE,
+  isProfileVisible,
+} from "../src/lib/profileVisibility";
 
 const validPayload = {
   photo_url: "https://res.cloudinary.com/ppmb/image/upload/networking/photo",
@@ -30,6 +37,10 @@ const validPayload = {
   custom_question: "Apa kegiatan yang ingin kamu ikuti?",
   custom_answer: "Saya ingin mengikuti kepanitiaan kampus.",
 };
+
+assert.deepEqual(VISIBLE_PROFILE_WHERE, { isProfileHidden: false });
+assert.equal(isProfileVisible({ isProfileHidden: false }), true);
+assert.equal(isProfileVisible({ isProfileHidden: true }), false);
 
 assert.deepEqual(NETWORKING_BATCH_REQUIREMENTS, {
   2026: 10,
@@ -210,5 +221,60 @@ assert.equal(cappedProgress.byBatch["2026"].completed, 10);
 assert.equal(cappedProgress.byBatch["2025"].completed, 4);
 assert.equal(cappedProgress.byBatch["2024"].completed, 2);
 assert.equal(cappedProgress.byBatch["2023"].completed, 2);
+
+const hiddenHistoricalSubmission = {
+  id: 42,
+  userId: 1,
+  friendId: 2,
+  photoUrl: validPayload.photo_url,
+  createdAt: new Date("2026-07-01T00:00:00.000Z"),
+  updatedAt: new Date("2026-07-02T00:00:00.000Z"),
+  friend: {
+    id: 2,
+    fullname: "Profil tersembunyi",
+    imgUrl: null,
+    faculty: null,
+    batch: 2025,
+    isProfileHidden: true,
+  },
+  answers: [
+    {
+      submissionId: 42,
+      questionId: 1,
+      answer: "Jawaban tersimpan",
+      customQuestion: null,
+      createdAt: new Date("2026-07-01T00:00:00.000Z"),
+      updatedAt: new Date("2026-07-01T00:00:00.000Z"),
+      question: {
+        id: 1,
+        questionType: "SENIOR" as const,
+        code: "historical",
+        prompt: "Pertanyaan historis",
+        position: 1,
+        isCustom: false,
+        isActive: true,
+      },
+    },
+  ],
+} as Parameters<typeof isNetworkingSubmissionProfileVisible>[0];
+
+assert.equal(
+  isNetworkingSubmissionProfileVisible(hiddenHistoricalSubmission),
+  false,
+);
+assert.equal(
+  "isProfileHidden" in
+    serializeNetworkingSubmission(hiddenHistoricalSubmission).friend,
+  false,
+);
+const historicalProgress = calculateNetworkingProgress(
+  [hiddenHistoricalSubmission],
+  { PEER: new Set(), SENIOR: new Set([1]) },
+);
+assert.equal(
+  historicalProgress.byBatch["2025"].completed,
+  1,
+  "Submission lengkap tetap dihitung setelah profil target disembunyikan.",
+);
 
 console.log("Validator kontrak Networking lulus.");

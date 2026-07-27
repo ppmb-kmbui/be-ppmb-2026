@@ -93,7 +93,10 @@ export async function POST(req: NextRequest) {
     const tokenMaxAgeSeconds = user.isAdmin ? 60 * 60 : 60 * 60 * 4;
     const tokenExpiresIn = user.isAdmin ? "1h" : "4h";
 
-    const token = await new jwt.SignJWT({ is_admin: user.isAdmin })
+    const token = await new jwt.SignJWT({
+      is_admin: user.isAdmin,
+      is_super_admin: user.isSuperAdmin,
+    })
       .setSubject(String(user.id))
       .setProtectedHeader({ alg: "HS256" })
       .setIssuedAt()

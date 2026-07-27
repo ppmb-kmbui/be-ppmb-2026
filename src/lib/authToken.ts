@@ -4,6 +4,7 @@ import { jwtVerify, type JWTPayload } from "jose";
 export type AuthIdentity = {
   userId: number;
   isAdmin: boolean;
+  isSuperAdmin: boolean;
   payload: JWTPayload;
 };
 
@@ -30,5 +31,10 @@ export async function verifyAccessToken(token: string): Promise<AuthIdentity> {
   if (!Number.isInteger(userId) || userId <= 0) {
     throw new Error("Subject token tidak valid");
   }
-  return { userId, isAdmin: payload.is_admin === true, payload };
+  return {
+    userId,
+    isAdmin: payload.is_admin === true,
+    isSuperAdmin: payload.is_super_admin === true,
+    payload,
+  };
 }

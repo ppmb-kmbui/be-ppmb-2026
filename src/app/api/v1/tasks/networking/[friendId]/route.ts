@@ -10,6 +10,7 @@ import {
 } from "@/lib/networking";
 import { getNetworkingSubmissionSchema } from "@/lib/networkingContract";
 import { prisma } from "@/lib/prisma";
+import { VISIBLE_PROFILE_WHERE } from "@/lib/profileVisibility";
 import { taskDeadlineGuard } from "@/lib/taskDeadline";
 import { taskOwnerGuard } from "@/lib/taskOwner";
 import serverResponse, { unauthorizedResponse } from "@/utils/serverResponse";
@@ -22,8 +23,8 @@ function parseFriendId(value: string) {
 }
 
 async function ensureEligibleFriend(userId: number, friendId: number) {
-  const target = await prisma.user.findUnique({
-    where: { id: friendId },
+  const target = await prisma.user.findFirst({
+    where: { id: friendId, ...VISIBLE_PROFILE_WHERE },
     select: { id: true },
   });
 
@@ -202,6 +203,7 @@ export async function PUT(
               imgUrl: true,
               faculty: true,
               batch: true,
+              isProfileHidden: true,
             },
           },
           answers: { include: { question: true } },

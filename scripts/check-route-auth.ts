@@ -24,6 +24,8 @@ import * as mentoringVideos from "../src/app/api/v1/tasks/mentoring/videos/route
 import * as networking from "../src/app/api/v1/tasks/networking/route";
 import * as networkingByFriend from "../src/app/api/v1/tasks/networking/[friendId]/route";
 import * as tasks from "../src/app/api/v1/tasks/route";
+import * as superadminProfiles from "../src/app/api/v1/superadmin/profiles/route";
+import * as superadminProfileVisibility from "../src/app/api/v1/superadmin/profiles/[id]/visibility/route";
 
 type Check = {
   name: string;
@@ -73,6 +75,17 @@ const checks: Check[] = [
       reviewParams,
     ),
   },
+  {
+    name: "superadmin/profiles GET",
+    run: () => superadminProfiles.GET(request("/api/v1/superadmin/profiles")),
+  },
+  {
+    name: "superadmin/profiles/:id/visibility PATCH",
+    run: () => superadminProfileVisibility.PATCH(
+      request("/api/v1/superadmin/profiles/1/visibility", "PATCH"),
+      params,
+    ),
+  },
 ];
 
 for (const check of checks) {
@@ -83,12 +96,16 @@ for (const check of checks) {
 }
 
 process.env.JWT_SECRET = "auth-route-test-secret-at-least-32-characters";
-const token = await new SignJWT({ is_admin: false })
+const token = await new SignJWT({ is_admin: false, is_super_admin: false })
   .setProtectedHeader({ alg: "HS256" })
   .setSubject("1")
   .setExpirationTime("5m")
   .sign(new TextEncoder().encode(process.env.JWT_SECRET));
-const participantLoader = async (userId: number) => ({ id: userId, isAdmin: false });
+const participantLoader = async (userId: number) => ({
+  id: userId,
+  isAdmin: false,
+  isSuperAdmin: false,
+});
 
 const bearerIdentity = await authenticateRequest(new NextRequest("http://localhost:4000/api/v1/profile", {
   headers: { authorization: `bearer ${token}` },
@@ -102,10 +119,21 @@ assert.equal(cookieIdentity.userId, 1);
 
 const currentAdminIdentity = await authenticateRequest(new NextRequest("http://localhost:4000/api/v1/admin/users", {
   headers: { authorization: `Bearer ${token}` },
-}), async (userId) => ({ id: userId, isAdmin: true }));
+}), async (userId) => ({ id: userId, isAdmin: true, isSuperAdmin: false }));
 assert.equal(currentAdminIdentity.isAdmin, true);
+assert.equal(currentAdminIdentity.isSuperAdmin, false);
 
-const forgedAdminToken = await new SignJWT({ is_admin: true })
+const currentSuperAdminIdentity = await authenticateRequest(new NextRequest(
+  "http://localhost:4000/api/v1/superadmin/profiles",
+  { headers: { authorization: `Bearer ${token}` } },
+), async (userId) => ({ id: userId, isAdmin: true, isSuperAdmin: true }));
+assert.equal(currentSuperAdminIdentity.isAdmin, true);
+assert.equal(currentSuperAdminIdentity.isSuperAdmin, true);
+
+const forgedAdminToken = await new SignJWT({
+  is_admin: true,
+  is_super_admin: true,
+})
   .setProtectedHeader({ alg: "HS256" })
   .setSubject("1")
   .setExpirationTime("5m")
@@ -115,6 +143,7 @@ const currentParticipantIdentity = await authenticateRequest(new NextRequest(
   { headers: { authorization: `Bearer ${forgedAdminToken}` } },
 ), participantLoader);
 assert.equal(currentParticipantIdentity.isAdmin, false);
+assert.equal(currentParticipantIdentity.isSuperAdmin, false);
 
 await assert.rejects(
   () => authenticateRequest(new NextRequest("http://localhost:4000/api/v1/profile", {
@@ -124,4 +153,4 @@ await assert.rejects(
 );
 
 console.log(`${checks.length} protected route handlers menolak request tanpa JWT dengan status 401.`);
-console.log("Bearer/cookie valid; user hilang ditolak; role admin selalu mengikuti database, bukan claim JWT.");
+console.log("Bearer/cookie valid; user hilang ditolak; role admin dan SUPERADMIN selalu mengikuti database, bukan claim JWT.");

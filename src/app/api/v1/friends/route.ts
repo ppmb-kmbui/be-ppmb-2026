@@ -10,6 +10,7 @@ import {
   shouldApplyNetworkingDiscoverScope,
 } from "@/lib/networking";
 import { prisma } from "@/lib/prisma";
+import { VISIBLE_PROFILE_WHERE } from "@/lib/profileVisibility";
 import serverResponse, {
   InvalidUserResponse,
   unauthorizedResponse,
@@ -114,6 +115,7 @@ export async function GET(req: NextRequest) {
   const where = {
     id: { not: userId },
     isAdmin: false,
+    ...VISIBLE_PROFILE_WHERE,
     ...(name ? { fullname: { contains: name, mode: "insensitive" as const } } : {}),
     ...(parsedBatch.batch ? { batch: parsedBatch.batch } : {}),
     ...(useDiscoverScope

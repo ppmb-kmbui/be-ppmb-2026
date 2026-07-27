@@ -30,6 +30,8 @@ model User {
   updatedAt                     DateTime                        @default(now()) @updatedAt @map("updated_at")
   faculty                       String?
   isAdmin                       Boolean                         @default(false) @map("is_admin")
+  isSuperAdmin                  Boolean                         @default(false) @map("is_super_admin")
+  isProfileHidden               Boolean                         @default(false) @map("is_profile_hidden")
   batch                         Int                             @default(2026)
   lineId                        String?                         @map("line_id")
   whatsappNumber                String?                         @map("whatsapp_number")
@@ -52,6 +54,7 @@ model User {
   TaskReviewsAuthored           TaskReview[]                    @relation("TaskReviewReviewer")
 
   @@index([isAdmin], map: "users_is_admin_idx")
+  @@index([isProfileHidden, batch], map: "users_profile_visibility_batch_idx")
   @@map("users")
 }
 

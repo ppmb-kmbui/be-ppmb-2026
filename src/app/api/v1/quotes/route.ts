@@ -1,5 +1,6 @@
 import { prisma } from "@/lib/prisma";
 import { authenticateRequest } from "@/lib/auth";
+import { VISIBLE_PROFILE_WHERE } from "@/lib/profileVisibility";
 import { NextRequest } from "next/server";
 import serverResponse, { unauthorizedResponse } from "@/utils/serverResponse";
 import { z } from "zod";
@@ -56,6 +57,9 @@ export async function GET(req: NextRequest) {
   }
 
   const quotes = await prisma.quotes.findMany({
+    where: {
+      user: VISIBLE_PROFILE_WHERE,
+    },
     include: {
       user: {
         omit: {

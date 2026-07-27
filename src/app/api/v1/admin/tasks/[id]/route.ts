@@ -3,9 +3,11 @@ import { CURRENT_BATCH } from "@/lib/const";
 import {
   findNetworkingSubmissions,
   getNetworkingOverview,
+  isNetworkingSubmissionProfileVisible,
   serializeNetworkingSubmission,
 } from "@/lib/networking";
 import { prisma } from "@/lib/prisma";
+import { VISIBLE_PROFILE_WHERE } from "@/lib/profileVisibility";
 import {
   serializeTaskReview,
   TASK_REVIEW_SLUGS,
@@ -29,9 +31,11 @@ const percentage = (completed: number, required: number) =>
   required === 0 ? 0 : Math.min(100, Math.round((completed / required) * 100));
 
 export async function GET(req: NextRequest, props: { params: Promise<{ id: string }> }) {
+  let includeHiddenProfiles = false;
   try {
-    const { isAdmin } = await authenticateRequest(req);
+    const { isAdmin, isSuperAdmin } = await authenticateRequest(req);
     if (!isAdmin) return forbiddenResponse();
+    includeHiddenProfiles = isSuperAdmin;
   } catch {
     return unauthorizedResponse();
   }
@@ -42,8 +46,11 @@ export async function GET(req: NextRequest, props: { params: Promise<{ id: strin
     return serverResponse({ success: false, message: "Bad Request", error: "User ID tidak valid", status: 400 });
   }
 
-  const user = await prisma.user.findUnique({
-    where: { id: userId },
+  const user = await prisma.user.findFirst({
+    where: {
+      id: userId,
+      ...(!includeHiddenProfiles ? VISIBLE_PROFILE_WHERE : {}),
+    },
     select: {
       id: true,
       fullname: true,
@@ -131,19 +138,25 @@ export async function GET(req: NextRequest, props: { params: Promise<{ id: strin
     ...networking.questionSets.peer,
     ...networking.questionSets.senior,
   ];
-  const networkingSubmissions = storedNetworkingSubmissions.map((submission) => {
-    const serialized = serializeNetworkingSubmission(submission);
-    const promptsByQuestionId = new Map(
-      submission.answers.map(({ questionId, question }) => [questionId, question.prompt]),
-    );
-    return {
-      ...serialized,
-      answers: serialized.answers.map((answer) => ({
-        ...answer,
-        prompt: promptsByQuestionId.get(answer.questionId) ?? null,
-      })),
-    };
-  });
+  const networkingSubmissions = storedNetworkingSubmissions
+    .filter(
+      (submission) =>
+        includeHiddenProfiles ||
+        isNetworkingSubmissionProfileVisible(submission),
+    )
+    .map((submission) => {
+      const serialized = serializeNetworkingSubmission(submission);
+      const promptsByQuestionId = new Map(
+        submission.answers.map(({ questionId, question }) => [questionId, question.prompt]),
+      );
+      return {
+        ...serialized,
+        answers: serialized.answers.map((answer) => ({
+          ...answer,
+          prompt: promptsByQuestionId.get(answer.questionId) ?? null,
+        })),
+      };
+    });
   const reviews = Object.fromEntries(
     TASK_REVIEW_SLUGS.map((taskType) => {
       const databaseType = taskReviewTypeFromSlug(taskType);
@@ -200,8 +213,9 @@ export async function GET(req: NextRequest, props: { params: Promise<{ id: strin
         },
       },
       submissions: {
-        // Fetch independently from current friendship eligibility so work that
-        // was already saved remains visible to reviewers if a connection changes.
+        // Fetch independently from current friendship eligibility so historical
+        // work remains reviewable if a connection changes. Hidden target
+        // identities are removed for ordinary admins before serialization.
         networking: networkingSubmissions,
         // Flat catalog retained for older admin clients.
         networkingQuestions,

@@ -65,6 +65,8 @@ const adminDetailRoute = readFileSync(new URL(
   import.meta.url,
 ), "utf8");
 assert.match(adminDetailRoute, /findNetworkingSubmissions\(userId\)/);
+assert.match(adminDetailRoute, /includeHiddenProfiles/);
+assert.match(adminDetailRoute, /isNetworkingSubmissionProfileVisible/);
 assert.match(adminDetailRoute, /TASK_REVIEW_SLUGS\.map/);
 
 const reviewRoute = readFileSync(new URL(
@@ -74,4 +76,6 @@ const reviewRoute = readFileSync(new URL(
 assert.match(reviewRoute, /reviewerId = identity\.userId/);
 assert.match(reviewRoute, /isTaskCompleteForReview\(participantId, taskType\)/);
 
-console.log("Kontrak penilaian admin lulus: nilai 0-100, reviewer dari auth, migration aditif, dan semua Networking tersimpan terlihat.");
+console.log(
+  "Kontrak penilaian admin lulus: nilai 0-100, reviewer dari auth, migration aditif, dan identitas target Networking tersembunyi tidak diserialisasi untuk admin biasa.",
+);

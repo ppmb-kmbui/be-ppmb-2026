@@ -8,6 +8,7 @@ import {
   type NetworkingQuestionType,
 } from "@/lib/networking";
 import { prisma } from "@/lib/prisma";
+import { VISIBLE_PROFILE_WHERE } from "@/lib/profileVisibility";
 import serverResponse, { forbiddenResponse, unauthorizedResponse } from "@/utils/serverResponse";
 import {
   isGoogleDriveResourceUrl,
@@ -47,9 +48,11 @@ type AdminUserListRecord = {
 };
 
 export async function GET(req: NextRequest) {
+  let includeHiddenProfiles = false;
   try {
-    const { isAdmin } = await authenticateRequest(req);
+    const { isAdmin, isSuperAdmin } = await authenticateRequest(req);
     if (!isAdmin) return forbiddenResponse();
+    includeHiddenProfiles = isSuperAdmin;
   } catch {
     return unauthorizedResponse();
   }
@@ -59,6 +62,7 @@ export async function GET(req: NextRequest) {
   const search = req.nextUrl.searchParams.get("search")?.trim();
   const where = {
     isAdmin: false,
+    ...(!includeHiddenProfiles ? VISIBLE_PROFILE_WHERE : {}),
     batch: 2026,
     ...(search ? { fullname: { contains: search, mode: "insensitive" as const } } : {}),
   };

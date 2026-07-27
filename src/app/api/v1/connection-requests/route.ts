@@ -1,6 +1,7 @@
 import { NextRequest } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { authenticateRequest } from "@/lib/auth";
+import { VISIBLE_PROFILE_WHERE } from "@/lib/profileVisibility";
 import serverResponse, { InvalidUserResponse, unauthorizedResponse } from "@/utils/serverResponse";
 
 export async function GET(req: NextRequest) {
@@ -14,6 +15,7 @@ export async function GET(req: NextRequest) {
     const connection_requests_recieved = await prisma.connectionRequest.findMany({
       where: {
         toId: userId,
+        from: VISIBLE_PROFILE_WHERE,
       },
       include: {
         from: {
@@ -31,6 +33,7 @@ export async function GET(req: NextRequest) {
     const connection_requests_sent = await prisma.connectionRequest.findMany({
       where: {
         fromId: userId,
+        to: VISIBLE_PROFILE_WHERE,
       },
       include: {
         to: {

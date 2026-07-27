@@ -6,6 +6,8 @@ Registrasi publik hanya menerima peserta angkatan 2026. Akun kakak tingkat angka
 
 Semua route tugas hanya dapat diakses peserta non-admin angkatan 2026. Autentikasi route memverifikasi JWT lalu mengambil kembali user dan role terkini dari database, sehingga token user yang sudah dihapus serta claim admin yang sudah tidak berlaku akan ditolak.
 
+Role `SUPERADMIN` disimpan terpisah dari status admin dan selalu dibaca ulang dari database. Akun `adminppmb@gmail.com` dipromosikan melalui migration terjaga. SUPERADMIN dapat mengatur visibilitas profil tanpa menghapus akun, koneksi, submission, atau progres historis.
+
 Kontrak submission tugas dan alur Cloudinary/Google Drive tersedia di [docs/TASK_SUBMISSIONS.md](docs/TASK_SUBMISSIONS.md).
 
 ## Menjalankan project
@@ -31,10 +33,14 @@ npm run db:validate
 npm run test:task-contracts
 npm run test:networking
 npm run test:auth-routes
+npm run test:profile-visibility-contract
+npm run test:superadmin-profiles
 npm run build
 ```
 
 `DATABASE_URL` dipakai aplikasi melalui Supabase transaction pooler. `DIRECT_URL` dipakai Prisma CLI untuk migration melalui session pooler.
+
+Sebelum dan sesudah migration visibilitas, jalankan `npm run test:profile-visibility` untuk memeriksa kecocokan allowlist Lampiran I dan kondisi database secara read-only.
 
 ## Endpoint profil
 
@@ -43,3 +49,7 @@ npm run build
 - `PUT /api/v1/profile` memperbarui profil peserta.
 - `GET /api/v1/profile/{id}` mengembalikan profil publik peserta lain.
 - `GET /api/v1/friends?scope=discover` menyediakan kandidat Kalyanamitta yang sudah disaring sebelum pagination; filter `batch` dapat digunakan untuk memilih angkatan.
+- `GET /api/v1/superadmin/profiles` menyediakan daftar pengelolaan profil, khusus SUPERADMIN.
+- `PATCH /api/v1/superadmin/profiles/{id}/visibility` mengubah status hidden secara idempoten, khusus SUPERADMIN.
+
+Profil hidden tidak muncul di daftar/pencarian, profil publik langsung, koneksi/request, quote, maupun target Networking. Submission Networking yang sudah selesai tetap dihitung untuk progres tanpa mengekspos identitas profil hidden kepada pengguna biasa.

@@ -1,6 +1,7 @@
 import { authenticateRequest } from "@/lib/auth";
 import { CURRENT_BATCH } from "@/lib/const";
 import { prisma } from "@/lib/prisma";
+import { VISIBLE_PROFILE_WHERE } from "@/lib/profileVisibility";
 import { isTaskCompleteForReview } from "@/lib/taskReview";
 import {
   parseTaskReviewSlug,
@@ -27,10 +28,12 @@ export async function PUT(
   props: { params: Promise<{ id: string; taskType: string }> },
 ) {
   let reviewerId: number;
+  let includeHiddenProfiles = false;
   try {
     const identity = await authenticateRequest(req);
     if (!identity.isAdmin) return forbiddenResponse();
     reviewerId = identity.userId;
+    includeHiddenProfiles = identity.isSuperAdmin;
   } catch {
     return unauthorizedResponse();
   }
@@ -56,8 +59,11 @@ export async function PUT(
     });
   }
 
-  const participant = await prisma.user.findUnique({
-    where: { id: participantId },
+  const participant = await prisma.user.findFirst({
+    where: {
+      id: participantId,
+      ...(!includeHiddenProfiles ? VISIBLE_PROFILE_WHERE : {}),
+    },
     select: { id: true, batch: true, isAdmin: true },
   });
   if (!participant) {

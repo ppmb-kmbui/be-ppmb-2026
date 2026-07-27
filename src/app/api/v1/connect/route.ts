@@ -1,5 +1,6 @@
 import { prisma } from "@/lib/prisma";
 import { authenticateRequest } from "@/lib/auth";
+import { VISIBLE_PROFILE_WHERE } from "@/lib/profileVisibility";
 import serverResponse, { InvalidUserResponse, unauthorizedResponse } from "@/utils/serverResponse";
 import { NextRequest } from "next/server";
 
@@ -14,6 +15,7 @@ export async function GET(req: NextRequest) {
     const connections = await prisma.connection.findMany({
       where: {
         fromId: userId,
+        to: VISIBLE_PROFILE_WHERE,
       },
       select: {
         id: true,
