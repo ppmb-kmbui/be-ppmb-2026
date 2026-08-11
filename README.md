@@ -12,7 +12,9 @@ Kontrak submission tugas dan alur Cloudinary/Google Drive tersedia di [docs/TASK
 
 ## Menjalankan project
 
-Salin `.env.example` menjadi `.env`, lalu isi `DATABASE_URL`, `DIRECT_URL`, dan `JWT_SECRET`.
+Salin `.env.example` menjadi `.env`, lalu isi `DATABASE_URL`, `DIRECT_URL`,
+`JWT_SECRET`, serta kredensial server-side Cloudinary. `CLOUDINARY_API_SECRET`
+tidak boleh memakai prefix `NEXT_PUBLIC` atau dikirim ke browser.
 
 ```bash
 npm install

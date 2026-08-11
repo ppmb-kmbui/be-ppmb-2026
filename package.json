@@ -20,6 +20,7 @@
     "test:superadmin-profiles": "tsx scripts/check-superadmin-profile-routes.ts",
     "test:task-deadlines": "tsx scripts/check-task-deadlines.ts",
     "test:task-contracts": "tsx scripts/check-task-contracts.ts",
+    "test:insight-upload": "tsx scripts/check-insight-upload.ts && tsx scripts/check-insight-upload-route.ts",
     "test:networking": "tsx scripts/check-networking-contract.ts",
     "test:admin-reviews": "tsx scripts/check-admin-reviews.ts"
   },

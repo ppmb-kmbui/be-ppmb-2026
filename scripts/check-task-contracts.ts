@@ -61,6 +61,7 @@ const taskRoutePaths = [
   "../src/app/api/v1/tasks/explorer/route.ts",
   "../src/app/api/v1/tasks/fossib/route.ts",
   "../src/app/api/v1/tasks/insight-hunting/route.ts",
+  "../src/app/api/v1/tasks/insight-hunting/upload/route.ts",
   "../src/app/api/v1/tasks/mentoring/route.ts",
   "../src/app/api/v1/tasks/mentoring/videos/route.ts",
   "../src/app/api/v1/tasks/networking/route.ts",
@@ -83,6 +84,6 @@ for (const routePath of taskRoutePaths) {
   protectedTaskHandlers += handlers.length;
 }
 
-assert.equal(protectedTaskHandlers, 13);
+assert.equal(protectedTaskHandlers, 14);
 
 console.log(`Validator kontrak task lulus; ${protectedTaskHandlers} handler dibatasi ke peserta 2026.`);

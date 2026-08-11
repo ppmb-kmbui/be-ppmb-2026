@@ -2,6 +2,7 @@ import {
   CURRENT_BATCH,
   DOCUMENT_MAX_UPLOAD_SIZE_MB,
   IMAGE_MAX_UPLOAD_SIZE_MB,
+  INSIGHT_HUNTING_SERVER_UPLOAD_MAX_SIZE_MB,
 } from "@/lib/const";
 import {
   NETWORKING_FIXED_QUESTION_COUNTS,
@@ -44,6 +45,7 @@ export async function GET() {
         maxSizeMb: DOCUMENT_MAX_UPLOAD_SIZE_MB,
         imageMaxSizeMb: IMAGE_MAX_UPLOAD_SIZE_MB,
         documentMaxSizeMb: DOCUMENT_MAX_UPLOAD_SIZE_MB,
+        insightHuntingServerMaxSizeMb: INSIGHT_HUNTING_SERVER_UPLOAD_MAX_SIZE_MB,
         profileImageTypes: ["image/png", "image/jpeg"],
         documentTypes: ["application/pdf"],
         videoTypes: ["video/mp4", "video/quicktime"],

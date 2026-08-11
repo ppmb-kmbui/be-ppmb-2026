@@ -1,6 +1,6 @@
 # Kontrak Submission Tugas PPMB 2026
 
-Dokumen ini adalah kontrak final antara frontend dan backend untuk pengumpulan tugas PPMB 2026. Backend menerima URL dalam JSON, bukan file mentah atau `multipart/form-data`.
+Dokumen ini adalah kontrak final antara frontend dan backend untuk pengumpulan tugas PPMB 2026. Endpoint tugas pada umumnya menerima URL dalam JSON. Insight Hunting juga memiliki endpoint multipart khusus agar PDF dapat diunggah ke Cloudinary melalui backend tanpa mengekspos secret ke browser.
 
 ## Autentikasi
 
@@ -15,14 +15,16 @@ Setelah JWT diverifikasi, backend selalu memuat ulang user dan status admin terk
 
 ## Alur upload
 
-Untuk foto dan PDF:
+Untuk foto dan endpoint PDF berbasis URL:
 
 1. Frontend mengunggah file ke Cloudinary.
 2. Frontend menerima URL HTTPS hasil upload.
 3. Frontend mengirim URL tersebut ke backend dalam payload JSON.
 4. Backend hanya memvalidasi dan menyimpan URL.
 
-Frontend unsigned upload membutuhkan `NEXT_PUBLIC_CLOUDINARY_CLOUD_NAME` dan `NEXT_PUBLIC_CLOUDINARY_UPLOAD_PRESET`. Jangan pernah menaruh `CLOUDINARY_API_SECRET` di frontend.
+Alur kompatibilitas frontend unsigned upload membutuhkan `NEXT_PUBLIC_CLOUDINARY_CLOUD_NAME` dan `NEXT_PUBLIC_CLOUDINARY_UPLOAD_PRESET`. Jangan pernah menaruh `CLOUDINARY_API_SECRET` di frontend.
+
+Untuk Insight Hunting, integrasi baru sebaiknya mengirim file ke `POST /api/v1/tasks/insight-hunting/upload`. Backend memvalidasi file lalu melakukan signed upload dengan `CLOUDINARY_CLOUD_NAME`, `CLOUDINARY_API_KEY`, dan `CLOUDINARY_API_SECRET` yang hanya tersimpan di environment backend. Endpoint ini tidak memakai unsigned upload preset.
 
 Link Google Drive untuk Mentoring tidak diunggah ke backend. Peserta menempelkan link share, lalu frontend mengirim link tersebut sebagai JSON. Networking tidak lagi memakai link Google Docs.
 
@@ -167,6 +169,7 @@ Endpoint:
 
 - `GET /api/v1/tasks/insight-hunting`
 - `POST /api/v1/tasks/insight-hunting`
+- `POST /api/v1/tasks/insight-hunting/upload`
 
 Payload canonical:
 
@@ -178,7 +181,13 @@ Payload canonical:
 
 Insight Hunting hanya membutuhkan satu URL PDF HTTPS yang berakhiran `.pdf`. Data lama yang masih berupa Google Docs tetap tersimpan, tetapi tidak dihitung selesai sampai peserta menggantinya dengan PDF.
 
-Backend memvalidasi bentuk URL, bukan isi byte file. Tipe file sebenarnya harus tetap dibatasi oleh Cloudinary upload preset dan validasi frontend.
+`POST /api/v1/tasks/insight-hunting` tetap menerima payload JSON di atas untuk kompatibilitas. Endpoint tersebut memvalidasi bentuk URL, bukan isi byte file.
+
+Endpoint multipart baru menerima tepat satu file pada field `file`. Request harus menggunakan `multipart/form-data`; jangan menetapkan header `Content-Type` secara manual di browser karena boundary dibuat otomatis. Backend menerima MIME `application/pdf`; untuk kompatibilitas document provider mobile, MIME kosong atau `application/octet-stream` hanya diterima jika nama file berakhiran `.pdf`. Semua jalur tetap mewajibkan magic bytes `%PDF-` dan ukuran maksimal **4 MiB** sebelum signed upload ke resource type `raw` di Cloudinary. Setiap peserta memakai `public_id` deterministik dan `overwrite=true`, sehingga percobaan ulang atau pengumpulan ulang mengganti asset yang sama alih-alih meninggalkan file yatim. Endpoint kemudian melakukan upsert pada submission yang sama dan mengembalikan response sukses yang sama dengan endpoint JSON.
+
+Batas proxy 4 MiB sengaja lebih kecil daripada batas dokumen umum 10 MiB. Deployment menggunakan Vercel Functions yang memiliki batas request body 4,5 MB; sisa ruang diperlukan untuk multipart boundary dan metadata. PDF lebih besar harus dikompresi sebelum memakai endpoint ini. Request yang melewati batas dikembalikan sebagai HTTP `413` dengan kode `PDF_FILE_TOO_LARGE`.
+
+Kesalahan file menggunakan HTTP `400`, `413`, atau `415`. Kegagalan Cloudinary yang aman untuk dicoba ulang menggunakan HTTP `502`, sedangkan kredensial server yang belum lengkap menggunakan HTTP `503` dengan kode `CLOUDINARY_NOT_CONFIGURED`. Response tidak pernah memuat API secret, signature, ataupun detail mentah dari Cloudinary.
 
 ## Ringkasan progress dan kompatibilitas
 
