@@ -28,29 +28,17 @@ Untuk Insight Hunting, integrasi baru sebaiknya mengirim file ke `POST /api/v1/t
 
 Link Google Drive untuk Mentoring tidak diunggah ke backend. Peserta menempelkan link share, lalu frontend mengirim link tersebut sebagai JSON. Networking tidak lagi memakai link Google Docs.
 
-## Deadline submission
+## Pengumpulan terbuka dan status Telat
 
-Setiap endpoint mutasi submission (`POST` atau `PUT`) memeriksa waktu server sebelum memvalidasi payload atau menyimpan data. Endpoint `GET` tetap dapat digunakan setelah deadline.
+Seluruh tugas menerima pengumpulan maupun pengumpulan ulang tanpa penutupan berdasarkan waktu. Environment `TASK_DEADLINE_*` lama tidak lagi dibaca, termasuk jika kosong, invalid, atau sudah lewat. Autentikasi, akses peserta 2026, dan validasi isi/file tetap berlaku.
 
-Deadline dikonfigurasi melalui environment variable berikut:
+Untuk kelima tugas, **Telat** berarti pengumpulan terakhir berhasil tersimpan pada atau setelah **6 September 2026 pukul 00.00 WIB**, yaitu `2026-09-05T17:00:00.000Z`. Seluruh tanggal 5 September WIB masih tepat waktu. Mengedit/mengumpulkan ulang setelah batas tersebut menjadikan tugas Telat walaupun pengumpulan pertama tepat waktu. Waktu berasal dari server; payload peserta tidak dapat menentukan timestamp atau label.
 
-- `TASK_DEADLINE_NETWORKING`
-- `TASK_DEADLINE_INSIGHT_HUNTING`
-- `TASK_DEADLINE_EXPLORER`
-- `TASK_DEADLINE_MENTORING`
-- `TASK_DEADLINE_FOSSIB`
+`GET /api/v1/admin/tasks/{id}` menyediakan `submissionTiming` untuk `networking`, `explorer`, `mentoring`, `fossib`, dan `insight-hunting`. Masing-masing berisi `{ submittedAt: string | null, isLate: boolean | null }`. `submittedAt` adalah timestamp ISO UTC pengumpulan terakhir. Networking memakai waktu terbaru dari seluruh wawancara yang tersimpan, termasuk submission parsial dan target yang kemudian hidden. Review admin tidak mengubah waktu pengumpulan.
 
-Nilai wajib berbentuk ISO 8601 dengan zona waktu eksplisit, misalnya `2026-08-10T23:59:59+07:00` untuk WIB. Submission ditutup saat waktu server sama dengan atau melewati deadline dan backend mengembalikan HTTP `403`. Konfigurasi yang kosong atau tidak valid ditolak secara fail-closed dengan HTTP `503`, sehingga deployment tidak pernah menerima submission tanpa deadline yang jelas.
+`GET /api/v1/admin/users` menyediakan map yang sama dan `lateTaskCount` (0–5) untuk badge daftar peserta. Label Telat di detail tugas berdiri terpisah dari kelengkapan dan penilaian; tugas yang lengkap tetap dapat dinilai walaupun telat.
 
-Deadline PPMB 2026:
-
-| Tugas | Deadline WIB | Nilai environment |
-|---|---|---|
-| Insight Hunting | 14 Agustus 2026, 23:59:59 | `2026-08-14T23:59:59+07:00` |
-| Networking | 31 Agustus 2026, 23:59:59 | `2026-08-31T23:59:59+07:00` |
-| Mentoring | 31 Agustus 2026, 23:59:59 | `2026-08-31T23:59:59+07:00` |
-| KMBUI Explorer | 7 September 2026, 23:59:59 | `2026-09-07T23:59:59+07:00` |
-| FOSSIB (Foster Sibling) | 7 September 2026, 23:59:59 | `2026-09-07T23:59:59+07:00` |
+Networking, FOSSIB, dan Mentoring memakai `updatedAt` submission. Explorer dan Insight Hunting menggunakan kolom nullable `submitted_at` dari migration `20260906000000_track_submission_times`. Migration ini perlu diterapkan sebelum menjalankan backend baru. Kedua model terakhir tidak memiliki timestamp historis; row lama tetap NULL hingga dikumpulkan ulang, sehingga `isLate: null` berarti waktu tidak diketahui. Migration tidak memberikan tanggal buatan pada submission lama.
 
 ## Networking
 
@@ -84,7 +72,7 @@ Payload canonical `PUT`:
 }
 ```
 
-Semua field wajib terisi. `photo_url` harus berupa URL gambar HTTPS. Untuk target 2026, `answers` harus berisi tiga ID pertanyaan tetap katalog `peer`. Untuk target 2023-2025, `answers` harus berisi lima ID pertanyaan tetap katalog `senior`. Pertanyaan bebas dan jawabannya wajib untuk kedua katalog. `PUT` membuat submission baru atau mengganti seluruh jawaban secara atomik selama deadline belum lewat.
+Semua field wajib terisi. `photo_url` harus berupa URL gambar HTTPS. Untuk target 2026, `answers` harus berisi tiga ID pertanyaan tetap katalog `peer`. Untuk target 2023-2025, `answers` harus berisi lima ID pertanyaan tetap katalog `senior`. Pertanyaan bebas dan jawabannya wajib untuk kedua katalog. `PUT` membuat submission baru atau mengganti seluruh jawaban secara atomik dan memperbarui waktu pengumpulan terakhir.
 
 Katalog `senior` mengikuti template kakak tingkat:
 

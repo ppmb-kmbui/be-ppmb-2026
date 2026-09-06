@@ -10,6 +10,8 @@ Role `SUPERADMIN` disimpan terpisah dari status admin dan selalu dibaca ulang da
 
 Kontrak submission tugas dan alur Cloudinary/Google Drive tersedia di [docs/TASK_SUBMISSIONS.md](docs/TASK_SUBMISSIONS.md).
 
+Semua tugas tetap terbuka untuk pengumpulan dan edit. Admin melihat label **Telat** jika pengumpulan terakhir terjadi setelah akhir 5 September 2026 WIB. Terapkan migration `20260906000000_track_submission_times` sebelum menjalankan backend ini; timestamp Explorer/Insight Hunting lama yang belum tercatat tetap tidak diketahui.
+
 ## Menjalankan project
 
 Salin `.env.example` menjadi `.env`, lalu isi `DATABASE_URL`, `DIRECT_URL`,
@@ -33,6 +35,8 @@ Server development berjalan di [http://localhost:4000](http://localhost:4000), s
 ```bash
 npm run db:validate
 npm run test:task-contracts
+npm run test:submission-timing
+npm run test:open-submissions
 npm run test:networking
 npm run test:auth-routes
 npm run test:profile-visibility-contract

@@ -9,7 +9,8 @@ const CLOUDINARY_URL =
   "https://res.cloudinary.com/test-cloud/raw/upload/v1786424400/ppmb-2026/insight-hunting/user-453.pdf";
 
 process.env.JWT_SECRET = JWT_SECRET;
-process.env.TASK_DEADLINE_INSIGHT_HUNTING = "2099-08-14T23:59:59+07:00";
+// Expired legacy configuration must no longer close submissions.
+process.env.TASK_DEADLINE_INSIGHT_HUNTING = "2020-01-01T00:00:00+07:00";
 process.env.CLOUDINARY_CLOUD_NAME = "test-cloud";
 process.env.CLOUDINARY_API_KEY = "test-key";
 process.env.CLOUDINARY_API_SECRET = "test-secret";
@@ -167,10 +168,14 @@ try {
     data: { id: 17, userId: USER_ID, file_url: CLOUDINARY_URL },
   });
   assert.equal(cloudinaryCalls, 1);
+  assert.equal(upsertCalls.length, 1);
+  const submittedAt = (upsertCalls[0].update as { submittedAt: Date }).submittedAt;
+  assert.ok(submittedAt instanceof Date);
+  assert.ok(Number.isFinite(submittedAt.getTime()));
   assert.deepEqual(upsertCalls, [{
     where: { userId: USER_ID },
-    update: { file_url: CLOUDINARY_URL },
-    create: { file_url: CLOUDINARY_URL, userId: USER_ID },
+    update: { file_url: CLOUDINARY_URL, submittedAt },
+    create: { file_url: CLOUDINARY_URL, userId: USER_ID, submittedAt },
   }]);
 } finally {
   Object.defineProperty(globalThis, "fetch", {

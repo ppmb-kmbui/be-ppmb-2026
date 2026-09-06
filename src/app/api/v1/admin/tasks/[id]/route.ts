@@ -8,6 +8,7 @@ import {
 } from "@/lib/networking";
 import { prisma } from "@/lib/prisma";
 import { VISIBLE_PROFILE_WHERE } from "@/lib/profileVisibility";
+import { getTaskSubmissionTimings } from "@/lib/taskSubmissionTiming";
 import {
   serializeTaskReview,
   TASK_REVIEW_SLUGS,
@@ -165,6 +166,14 @@ export async function GET(req: NextRequest, props: { params: Promise<{ id: strin
     }),
   );
 
+  const submissionTiming = getTaskSubmissionTimings({
+    networking: storedNetworkingSubmissions.map(({ updatedAt }) => updatedAt),
+    explorer: [explorer?.submittedAt],
+    mentoring: [mentoring?.updatedAt],
+    fossib: [fossib?.updatedAt],
+    "insight-hunting": [insightHunting?.submittedAt],
+  });
+
   return serverResponse({
     success: true,
     message: "Detail tugas user berhasil didapatkan",
@@ -172,6 +181,7 @@ export async function GET(req: NextRequest, props: { params: Promise<{ id: strin
       user: participant,
       status,
       reviews,
+      submissionTiming,
       progress: {
         networking: {
           completed: networkingCompleted,

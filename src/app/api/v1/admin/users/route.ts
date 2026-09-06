@@ -9,6 +9,7 @@ import {
 } from "@/lib/networking";
 import { prisma } from "@/lib/prisma";
 import { VISIBLE_PROFILE_WHERE } from "@/lib/profileVisibility";
+import { getTaskSubmissionTimings } from "@/lib/taskSubmissionTiming";
 import serverResponse, { forbiddenResponse, unauthorizedResponse } from "@/utils/serverResponse";
 import {
   isGoogleDriveResourceUrl,
@@ -28,6 +29,7 @@ type AdminUserListRecord = {
   ConnectionSender: { toId: number }[];
   ConnectionReciever: { fromId: number }[];
   NetworkingSubmissions: {
+    updatedAt: Date;
     photoUrl: string;
     friend: { id: number; batch: number };
     answers: {
@@ -41,10 +43,10 @@ type AdminUserListRecord = {
       };
     }[];
   }[];
-  ExplorerSubmission: { activityName: string | null; img_url: string }[];
-  MentoringSubmission: { gdriveUrl: string } | null;
-  FossibSubmission: { fileUrl: string; photoUrl: string } | null;
-  InsightHuntingSubmission: { file_url: string }[];
+  ExplorerSubmission: { activityName: string | null; img_url: string; submittedAt: Date | null }[];
+  MentoringSubmission: { gdriveUrl: string; updatedAt: Date } | null;
+  FossibSubmission: { fileUrl: string; photoUrl: string; updatedAt: Date } | null;
+  InsightHuntingSubmission: { file_url: string; submittedAt: Date | null }[];
 };
 
 export async function GET(req: NextRequest) {
@@ -90,6 +92,7 @@ export async function GET(req: NextRequest) {
         },
         NetworkingSubmissions: {
           select: {
+            updatedAt: true,
             photoUrl: true,
             friend: { select: { id: true, batch: true } },
             answers: {
@@ -105,16 +108,16 @@ export async function GET(req: NextRequest) {
           },
         },
         ExplorerSubmission: {
-          select: { activityName: true, img_url: true },
+          select: { activityName: true, img_url: true, submittedAt: true },
         },
         MentoringSubmission: {
-          select: { gdriveUrl: true },
+          select: { gdriveUrl: true, updatedAt: true },
         },
         FossibSubmission: {
-          select: { fileUrl: true, photoUrl: true },
+          select: { fileUrl: true, photoUrl: true, updatedAt: true },
         },
         InsightHuntingSubmission: {
-          select: { file_url: true },
+          select: { file_url: true, submittedAt: true },
         },
       },
     }),
@@ -207,8 +210,18 @@ export async function GET(req: NextRequest) {
       fossibCompleted + insightCompleted;
     const required = NETWORKING_REQUIRED_TOTAL + 4;
 
+    const submissionTiming = getTaskSubmissionTimings({
+      networking: NetworkingSubmissions.map(({ updatedAt }) => updatedAt),
+      explorer: ExplorerSubmission.map(({ submittedAt }) => submittedAt),
+      mentoring: [MentoringSubmission?.updatedAt],
+      fossib: [FossibSubmission?.updatedAt],
+      "insight-hunting": InsightHuntingSubmission.map(({ submittedAt }) => submittedAt),
+    });
+
     return {
       ...user,
+      lateTaskCount: Object.values(submissionTiming).filter(({ isLate }) => isLate === true).length,
+      submissionTiming,
       progress: {
         completed,
         required,

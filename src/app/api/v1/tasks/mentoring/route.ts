@@ -4,7 +4,6 @@ import serverResponse, { unauthorizedResponse } from "@/utils/serverResponse";
 import { isGoogleDriveResourceUrl, taskSubmissionErrorResponse } from "@/utils/taskSubmission";
 import { NextRequest } from "next/server";
 import { z } from "zod";
-import { taskDeadlineGuard } from "@/lib/taskDeadline";
 import { taskOwnerGuard } from "@/lib/taskOwner";
 
 const GdriveUrlSchema = z.string().trim().url("Link Google Drive tidak valid").refine(
@@ -66,16 +65,15 @@ export async function POST(req: NextRequest) {
 
   const ownerResponse = await taskOwnerGuard(userId);
   if (ownerResponse) return ownerResponse;
-  const deadlineResponse = taskDeadlineGuard("mentoring");
-  if (deadlineResponse) return deadlineResponse;
 
   try {
     const raw = SubmissionSchema.parse(await req.json());
     const gdriveUrl = raw.gdrive_url ?? raw.gdriveUrl ?? raw.file_url!;
+    const updatedAt = new Date();
     const data = await prisma.mentoringSubmission.upsert({
       where: { userId },
-      update: { gdriveUrl },
-      create: { userId, gdriveUrl },
+      update: { gdriveUrl, updatedAt },
+      create: { userId, gdriveUrl, updatedAt },
     });
 
     return serverResponse({

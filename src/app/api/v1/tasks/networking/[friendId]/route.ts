@@ -11,7 +11,6 @@ import {
 import { getNetworkingSubmissionSchema } from "@/lib/networkingContract";
 import { prisma } from "@/lib/prisma";
 import { VISIBLE_PROFILE_WHERE } from "@/lib/profileVisibility";
-import { taskDeadlineGuard } from "@/lib/taskDeadline";
 import { taskOwnerGuard } from "@/lib/taskOwner";
 import serverResponse, { unauthorizedResponse } from "@/utils/serverResponse";
 import { taskSubmissionErrorResponse } from "@/utils/taskSubmission";
@@ -116,8 +115,6 @@ export async function PUT(
 
   const ownerResponse = await taskOwnerGuard(userId);
   if (ownerResponse) return ownerResponse;
-  const deadlineResponse = taskDeadlineGuard("networking");
-  if (deadlineResponse) return deadlineResponse;
 
   const friendId = parseFriendId((await props.params).friendId);
   if (!friendId) {
@@ -168,10 +165,11 @@ export async function PUT(
     }
 
     const submission = await prisma.$transaction(async (transaction) => {
+      const updatedAt = new Date();
       const savedSubmission = await transaction.networkingSubmission.upsert({
         where: { userId_friendId: { userId, friendId } },
-        update: { photoUrl: body.photo_url },
-        create: { userId, friendId, photoUrl: body.photo_url },
+        update: { photoUrl: body.photo_url, updatedAt },
+        create: { userId, friendId, photoUrl: body.photo_url, updatedAt },
       });
 
       await transaction.networkingAnswer.deleteMany({

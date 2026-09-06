@@ -4,7 +4,6 @@ import serverResponse, { unauthorizedResponse } from "@/utils/serverResponse";
 import { isImageUrl, isPdfUrl, taskSubmissionErrorResponse, urlResourceKey } from "@/utils/taskSubmission";
 import { NextRequest } from "next/server";
 import { z } from "zod";
-import { taskDeadlineGuard } from "@/lib/taskDeadline";
 import { taskOwnerGuard } from "@/lib/taskOwner";
 
 const PhotoUrlSchema = z.string().trim().url("URL foto tidak valid").refine(
@@ -73,12 +72,10 @@ export async function POST(req: NextRequest) {
 
   const ownerResponse = await taskOwnerGuard(userId);
   if (ownerResponse) return ownerResponse;
-  const deadlineResponse = taskDeadlineGuard("fossib");
-  if (deadlineResponse) return deadlineResponse;
 
   try {
     const body = SubmissionSchema.parse(await req.json());
-    const values = { fileUrl: body.file_url, photoUrl: body.photo_url };
+    const values = { fileUrl: body.file_url, photoUrl: body.photo_url, updatedAt: new Date() };
     const submission = await prisma.fossibSubmission.upsert({
       where: { userId },
       update: values,

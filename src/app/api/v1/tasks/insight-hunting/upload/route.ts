@@ -6,7 +6,6 @@ import {
   validatePdfUpload,
 } from "@/lib/cloudinaryUpload";
 import { prisma } from "@/lib/prisma";
-import { taskDeadlineGuard } from "@/lib/taskDeadline";
 import { taskOwnerGuard } from "@/lib/taskOwner";
 import serverResponse, { unauthorizedResponse } from "@/utils/serverResponse";
 import { taskSubmissionErrorResponse } from "@/utils/taskSubmission";
@@ -42,9 +41,6 @@ export async function POST(req: NextRequest) {
 
   const ownerResponse = await taskOwnerGuard(userId);
   if (ownerResponse) return ownerResponse;
-
-  const deadlineResponse = taskDeadlineGuard("insightHunting");
-  if (deadlineResponse) return deadlineResponse;
 
   const contentType = req.headers.get("content-type")?.toLowerCase() ?? "";
   if (!contentType.startsWith("multipart/form-data;")) {
@@ -83,10 +79,11 @@ export async function POST(req: NextRequest) {
 
     const pdf = await validatePdfUpload(files[0]);
     const file_url = await uploadPdfToCloudinary({ bytes: pdf.bytes, userId });
+    const submittedAt = new Date();
     const data = await prisma.insightHuntingSubmission.upsert({
       where: { userId },
-      update: { file_url },
-      create: { file_url, userId },
+      update: { file_url, submittedAt },
+      create: { file_url, userId, submittedAt },
     });
 
     return serverResponse({

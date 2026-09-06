@@ -164,18 +164,20 @@ model SecondFossibSessionSubmission {
 }
 
 model InsightHuntingSubmission {
-  id       Int    @id @default(autoincrement())
-  user     User   @relation(fields: [userId], references: [id])
-  file_url String @map("file_url")
-  userId   Int    @unique
+  id          Int       @id @default(autoincrement())
+  user        User      @relation(fields: [userId], references: [id])
+  file_url    String    @map("file_url")
+  userId      Int       @unique
+  submittedAt DateTime? @map("submitted_at")
 }
 
 model ExplorerSubmission {
-  id           Int     @id @default(autoincrement())
-  user         User    @relation(fields: [userId], references: [id])
-  activityName String? @map("activity_name")
-  img_url      String  @map("img_url")
-  userId       Int     @unique
+  id           Int       @id @default(autoincrement())
+  user         User      @relation(fields: [userId], references: [id])
+  activityName String?   @map("activity_name")
+  img_url      String    @map("img_url")
+  userId       Int       @unique
+  submittedAt  DateTime? @map("submitted_at")
 }
 
 model FossibSubmission {
